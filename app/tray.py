@@ -314,44 +314,49 @@ class SystemTrayController:
         self.icon: Optional[pystray.Icon] = None
 
     def start(self) -> None:
+        from app.i18n import tr
+
         image = create_tray_icon_image(64)
         menu = pystray.Menu(
             pystray.MenuItem(
-                "Bảng hướng dẫn & Cài đặt",
+                lambda _item: tr("tray_open_settings"),
                 lambda _icon, _item: self.on_open_settings(),
                 default=True,
             ),
             pystray.MenuItem(
-                "Khởi động cùng máy tính",
+                lambda _item: tr("tray_autostart"),
                 lambda _icon, _item: self.on_toggle_autostart(),
                 checked=lambda _item: is_autostart_enabled(),
             ),
             pystray.Menu.SEPARATOR,
             pystray.MenuItem(
-                "Chụp nhanh (Ctrl + 1)",
+                lambda _item: tr("tray_capture_fast"),
                 lambda _icon, _item: self.on_capture_clipboard(),
             ),
             pystray.MenuItem(
-                "Chụp & Ghi chú (Ctrl + 2)",
+                lambda _item: tr("tray_capture_draw"),
                 lambda _icon, _item: self.on_capture_draw(),
             ),
             pystray.Menu.SEPARATOR,
             pystray.MenuItem(
-                "Đóng ứng dụng",
+                lambda _item: tr("tray_exit"),
                 lambda _icon, _item: self.on_exit(),
             ),
         )
         self.icon = pystray.Icon(
             name="CaptureToClipboard",
             icon=image,
-            title="CHỤP MÀN HÌNH — Nhấn để mở Bảng hướng dẫn",
+            title=tr("tray_tooltip"),
             menu=menu,
         )
         self.icon.run_detached()
 
     def refresh_menu(self) -> None:
+        from app.i18n import tr
+
         if self.icon is not None:
             try:
+                self.icon.title = tr("tray_tooltip")
                 self.icon.update_menu()
             except Exception:
                 pass

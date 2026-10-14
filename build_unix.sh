@@ -4,7 +4,7 @@ set -e
 cd "$(dirname "$0")"
 
 echo "========================================================"
-echo "  Building ChupManHinh standalone app (macOS / Linux)"
+echo "  Building CaptureToClipboard standalone app (Unix)     "
 echo "========================================================"
 
 export PATH="/opt/homebrew/opt/python@3.14/libexec/bin:/opt/homebrew/opt/python@3.13/libexec/bin:/opt/homebrew/opt/python@3.12/libexec/bin:/opt/homebrew/bin:/usr/local/bin:$PATH"
@@ -25,9 +25,9 @@ python -m pip install -r requirements.txt pyinstaller
 python -c "from app.tray import ensure_logo_assets; ensure_logo_assets()"
 
 python -m PyInstaller --noconfirm --clean --windowed --onefile \
-    --name "ChupManHinh" \
+    --name "CaptureToClipboard" \
     --icon "assets/logo.png" \
     --add-data "assets:assets" \
     main.py
 
-echo "[OK] Build completed: $(pwd)/dist/ChupManHinh"
+echo "[OK] Build completed: $(pwd)/dist/CaptureToClipboard"

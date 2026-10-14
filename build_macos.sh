@@ -4,12 +4,12 @@ set -e
 cd "$(dirname "$0")"
 
 echo "========================================================"
-echo "  Đang đóng gói CHỤP MÀN HÌNH cho macOS (.app & .dmg)   "
+echo "  Building Capture To Clipboard for macOS (.app & .dmg) "
 echo "========================================================"
 
 if [[ "$(uname -s)" != "Darwin" ]]; then
     echo "[!] Lưu ý: PyInstaller yêu cầu chạy trên môi trường macOS"
-    echo "    để biên dịch nhân Mach-O của ChupManHinh.app."
+    echo "    để biên dịch nhân Mach-O của Capture To Clipboard.app."
     exit 1
 fi
 
@@ -77,45 +77,50 @@ python -m pip install --upgrade pip
 python -m pip install -r requirements.txt pyinstaller
 python -c "from app.tray import ensure_logo_assets; ensure_logo_assets()"
 
-echo "-> Đang biên dịch ChupManHinh.app..."
+echo "-> Đang biên dịch Capture To Clipboard.app..."
 python -m PyInstaller --noconfirm --clean ChupManHinh_macOS.spec
 
-if [[ -d "dist/ChupManHinh.app" ]]; then
+APP_BUNDLE="dist/Capture To Clipboard.app"
+DMG_FILE="dist/CaptureToClipboard-macOS.dmg"
+ZIP_FILE="dist/CaptureToClipboard-macOS-App.zip"
+
+if [[ -d "$APP_BUNDLE" ]]; then
     echo "-> Đang ký số ad-hoc (codesign) cho Apple Silicon / Gatekeeper..."
-    codesign --force --deep --sign - "dist/ChupManHinh.app" || true
+    codesign --force --deep --sign - "$APP_BUNDLE" || true
 
-    echo "-> Đang nén dist/ChupManHinh-macOS-App.zip..."
-    ditto -c -k --sequesterRsrc --keepParent "dist/ChupManHinh.app" "dist/ChupManHinh-macOS-App.zip"
+    echo "-> Đang nén $ZIP_FILE..."
+    rm -f "$ZIP_FILE"
+    ditto -c -k --sequesterRsrc --keepParent "$APP_BUNDLE" "$ZIP_FILE"
 
-    echo "-> Đang đóng gói bộ cài đặt dist/ChupManHinh-macOS.dmg..."
-    rm -rf dist/dmg_staging dist/ChupManHinh-macOS.dmg
+    echo "-> Đang đóng gói bộ cài đặt $DMG_FILE..."
+    rm -rf dist/dmg_staging "$DMG_FILE"
     mkdir -p dist/dmg_staging
-    cp -R "dist/ChupManHinh.app" dist/dmg_staging/
+    cp -R "$APP_BUNDLE" dist/dmg_staging/
     ln -s /Applications dist/dmg_staging/Applications
 
     hdiutil create \
-        -volname "CHUP MAN HINH" \
+        -volname "Capture To Clipboard" \
         -srcfolder dist/dmg_staging \
         -fs HFS+ \
         -ov -format UDZO \
-        "dist/ChupManHinh-macOS.dmg" || (
+        "$DMG_FILE" || (
         sleep 2
         hdiutil create \
-            -volname "CHUP MAN HINH" \
+            -volname "Capture To Clipboard" \
             -srcfolder dist/dmg_staging \
             -ov -format UDZO \
-            "dist/ChupManHinh-macOS.dmg"
+            "$DMG_FILE"
     )
 
     rm -rf dist/dmg_staging
     echo ""
     echo "========================================================"
     echo "[OK] Đóng gói thành công cho macOS:"
-    echo "  • App Bundle : $(pwd)/dist/ChupManHinh.app"
-    echo "  • App ZIP    : $(pwd)/dist/ChupManHinh-macOS-App.zip"
-    echo "  • Bộ cài DMG : $(pwd)/dist/ChupManHinh-macOS.dmg"
+    echo "  • App Bundle : $(pwd)/$APP_BUNDLE"
+    echo "  • App ZIP    : $(pwd)/$ZIP_FILE"
+    echo "  • Bộ cài DMG : $(pwd)/$DMG_FILE"
     echo "========================================================"
 else
-    echo "[ERROR] Không tìm thấy dist/ChupManHinh.app sau khi build!"
+    echo "[ERROR] Không tìm thấy $APP_BUNDLE sau khi build!"
     exit 1
 fi

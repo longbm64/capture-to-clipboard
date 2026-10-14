@@ -34,7 +34,7 @@ def get_writable_data_dir():
 
     if getattr(sys, "frozen", False):
         if sys.platform == "darwin":
-            mac_dir = Path.home() / "Library" / "Application Support" / "ChupManHinh"
+            mac_dir = Path.home() / "Library" / "Application Support" / "CaptureToClipboard"
             mac_dir.mkdir(parents=True, exist_ok=True)
             return mac_dir
         exe_assets = Path(sys.executable).resolve().parent / "assets"

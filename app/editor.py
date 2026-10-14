@@ -1025,10 +1025,11 @@ class AnnotationEditor:
         self._redo_stack.clear()
 
     def _build_window(self) -> None:
+        from app.i18n import APP_NAME, get_editor_sizes, get_editor_tools, tr
         from app.tray import apply_window_icon
 
         self.win = tk.Toplevel(self.root)
-        self.win.title("𝗖𝗛Ụ𝗣 𝗠À𝗡 𝗛Ì𝗡𝗛")
+        self.win.title(APP_NAME)
         self.win.configure(bg=self.CANVAS_AREA_BG)
         apply_window_icon(self.win)
         try:
@@ -1046,7 +1047,7 @@ class AnnotationEditor:
         tools_frame = tk.Frame(top_bar, bg=self.TOOLBAR_ROW1_BG)
         tools_frame.pack(side=tk.LEFT)
 
-        for tool_id, label in self.TOOLS:
+        for tool_id, label in get_editor_tools():
             btn = ModernPillButton(
                 tools_frame,
                 text=label,
@@ -1077,7 +1078,7 @@ class AnnotationEditor:
 
         self.btn_undo = ModernPillButton(
             hist_frame,
-            text="Hoàn tác",
+            text=tr("editor_undo"),
             icon_name="undo",
             parent_bg=self.TOOLBAR_ROW1_BG,
             bg_normal="#ffffff",
@@ -1094,7 +1095,7 @@ class AnnotationEditor:
 
         self.btn_redo = ModernPillButton(
             hist_frame,
-            text="Làm lại",
+            text=tr("editor_redo"),
             icon_name="redo",
             parent_bg=self.TOOLBAR_ROW1_BG,
             bg_normal="#ffffff",
@@ -1111,7 +1112,7 @@ class AnnotationEditor:
 
         self.btn_clear = ModernPillButton(
             hist_frame,
-            text="Xóa hết",
+            text=tr("editor_clear"),
             icon_name="clear",
             parent_bg=self.TOOLBAR_ROW1_BG,
             bg_normal="#fff1f2",
@@ -1138,7 +1139,7 @@ class AnnotationEditor:
 
         color_label = tk.Label(
             sub_bar,
-            text="Màu sắc:",
+            text=tr("editor_color_label"),
             font=("Roboto", 10, "bold"),
             fg="#1e293b",
             bg=self.TOOLBAR_ROW2_BG,
@@ -1158,7 +1159,7 @@ class AnnotationEditor:
 
         custom_color_btn = ModernPillButton(
             sub_bar,
-            text="Màu khác",
+            text=tr("editor_custom_color"),
             icon_name="palette",
             parent_bg=self.TOOLBAR_ROW2_BG,
             bg_normal="#ffffff",
@@ -1179,14 +1180,14 @@ class AnnotationEditor:
 
         size_label = tk.Label(
             sub_bar,
-            text="Độ dày:",
+            text=tr("editor_size_label"),
             font=("Roboto", 10, "bold"),
             fg="#1e293b",
             bg=self.TOOLBAR_ROW2_BG,
         )
         size_label.pack(side=tk.LEFT, padx=(2, 8))
 
-        for sz_val, sz_name, dot_r in self.SIZES:
+        for sz_val, sz_name, dot_r in get_editor_sizes():
             s_btn = SizeDotButton(
                 sub_bar,
                 size_val=sz_val,
@@ -1207,7 +1208,7 @@ class AnnotationEditor:
 
         btn_copy = ModernPillButton(
             action_frame,
-            text="Sao chép (Enter)",
+            text=tr("editor_copy_btn"),
             icon_name="copy",
             parent_bg=self.TOOLBAR_ROW2_BG,
             bg_normal="#059669",
@@ -1224,7 +1225,7 @@ class AnnotationEditor:
 
         btn_save = ModernPillButton(
             action_frame,
-            text="Lưu ảnh (Ctrl+S)",
+            text=tr("editor_save_btn"),
             icon_name="save",
             parent_bg=self.TOOLBAR_ROW2_BG,
             bg_normal="#0284c7",
@@ -1241,7 +1242,7 @@ class AnnotationEditor:
 
         btn_close = ModernPillButton(
             action_frame,
-            text="Đóng (ESC)",
+            text=tr("editor_close_btn"),
             icon_name="close",
             parent_bg=self.TOOLBAR_ROW2_BG,
             bg_normal="#e2e8f0",
@@ -1280,10 +1281,10 @@ class AnnotationEditor:
         self.canvas.pack()
         self._canvas_img_id = self.canvas.create_image(0, 0, anchor=tk.NW)
 
-        status_text = (
-            f"Kích thước: {self.base_image.width}×{self.base_image.height} px   •   "
-            "Kéo giữ chuột vào nét đã vẽ để di chuyển vị trí   •   "
-            "Delete: Xóa nét chọn   |   Enter / Ctrl+C: Sao chép ảnh"
+        status_text = tr(
+            "editor_status_bar",
+            w=self.base_image.width,
+            h=self.base_image.height,
         )
         status_bar = tk.Label(
             self.win,
@@ -1321,6 +1322,7 @@ class AnnotationEditor:
         self.win.bind("<Return>", self._on_enter_key)
         self.win.bind("<Escape>", self._on_escape_key)
         self.win.protocol("WM_DELETE_WINDOW", self.close_editor)
+        self.win.bind("<Unmap>", self._on_window_unmap)
 
         self.win.update_idletasks()
         win_w = self.win.winfo_reqwidth()
@@ -1331,6 +1333,15 @@ class AnnotationEditor:
         self.win.lift()
         try:
             self.win.focus_force()
+        except Exception:
+            pass
+
+    def _on_window_unmap(self, event: tk.Event) -> None:
+        if event.widget is not self.win:
+            return
+        try:
+            if self.win.winfo_exists() and self.win.state() == "iconic":
+                self.close_editor()
         except Exception:
             pass
 
@@ -1352,9 +1363,11 @@ class AnnotationEditor:
                 self._rebuild_composite_and_refresh(high_quality=True)
 
     def _pick_custom_color(self) -> None:
+        from app.i18n import tr
+
         result = colorchooser.askcolor(
             color=self.current_color,
-            title="Chọn màu nét vẽ",
+            title=tr("editor_custom_color_title"),
             parent=self.win,
         )
         if result and result[1]:
@@ -1973,11 +1986,13 @@ class AnnotationEditor:
         self.close_editor()
 
     def save_to_file(self) -> None:
+        from app.i18n import tr
+
         self._commit_active_text()
         default_name = f"screenshot_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png"
         file_path = filedialog.asksaveasfilename(
             parent=self.win,
-            title="Lưu ảnh chụp màn hình chất lượng cao",
+            title=tr("editor_save_dialog_title"),
             initialfile=default_name,
             defaultextension=".png",
             filetypes=[

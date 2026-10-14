@@ -7,7 +7,7 @@ on:
 
 jobs:
   build-macos:
-    name: Build macOS (ChupManHinh.app & .dmg)
+    name: Build macOS (Capture To Clipboard.app & .dmg)
     runs-on: macos-latest
     steps:
       - name: Checkout repository
@@ -18,7 +18,7 @@ jobs:
         with:
           python-version: '3.12'
 
-      - name: Build ChupManHinh.app & ChupManHinh-macOS.dmg
+      - name: Build Capture To Clipboard.app & .dmg
         run: |
           chmod +x build_macos.sh
           ./build_macos.sh
@@ -26,13 +26,13 @@ jobs:
       - name: Upload macOS DMG & App Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ChupManHinh-macOS-Installer
+          name: CaptureToClipboard-macOS-Installer
           path: |
-            dist/ChupManHinh-macOS.dmg
-            dist/ChupManHinh-macOS-App.zip
+            dist/CaptureToClipboard-macOS.dmg
+            dist/CaptureToClipboard-macOS-App.zip
 
   build-windows:
-    name: Build Windows (ChupManHinh.exe)
+    name: Build Windows (CaptureToClipboard.exe)
     runs-on: windows-latest
     steps:
       - name: Checkout repository
@@ -48,10 +48,10 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install -r requirements.txt pyinstaller
           python -c "from app.tray import ensure_logo_assets; ensure_logo_assets()"
-          python -m PyInstaller --noconfirm --clean --noconsole --onefile --name "ChupManHinh" --icon "assets/logo.ico" --add-data "assets;assets" --hidden-import "pystray._win32" --hidden-import "pynput.keyboard._win32" --hidden-import "pynput.mouse._win32" main.py
+          python -m PyInstaller --noconfirm --clean --noconsole --onefile --name "CaptureToClipboard" --icon "assets/logo.ico" --add-data "assets;assets" --hidden-import "pystray._win32" --hidden-import "pynput.keyboard._win32" --hidden-import "pynput.mouse._win32" main.py
 
       - name: Upload Windows EXE Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ChupManHinh-Windows-Portable
-          path: dist/ChupManHinh.exe
+          name: CaptureToClipboard-Windows-Portable
+          path: dist/CaptureToClipboard.exe

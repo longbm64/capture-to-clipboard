@@ -219,9 +219,11 @@ class RegionSelectorOverlay:
             pass
 
     def _draw_top_banner(self) -> None:
+        from app.i18n import tr
+
         cx = self.win_width // 2
         y = 30
-        banner_text = f"  {self.mode_title}   •   Kéo chuột chọn vùng   •   ESC hoặc Chuột phải để hủy  "
+        banner_text = f"  {self.mode_title}   •   {tr('overlay_banner_hint')}  "
         text_id = self.canvas.create_text(
             cx,
             y,

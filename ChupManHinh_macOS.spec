@@ -1,5 +1,5 @@
 # -*- mode: python ; coding: utf-8 -*-
-"""PyInstaller Spec File for macOS Application Bundle (ChupManHinh.app)."""
+"""PyInstaller Spec File for macOS Application Bundle (Capture To Clipboard.app)."""
 
 block_cipher = None
 
@@ -33,7 +33,7 @@ exe = EXE(
     a.scripts,
     [],
     exclude_binaries=True,
-    name='ChupManHinh',
+    name='CaptureToClipboard',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
@@ -53,27 +53,27 @@ coll = COLLECT(
     strip=False,
     upx=True,
     upx_exclude=[],
-    name='ChupManHinh',
+    name='CaptureToClipboard',
 )
 
 app = BUNDLE(
     coll,
-    name='ChupManHinh.app',
+    name='Capture To Clipboard.app',
     icon='assets/logo.icns',
-    bundle_identifier='com.chupmanhinh.hd.app',
+    bundle_identifier='com.capturetoclipboard.hd.app',
     info_plist={
-        'CFBundleName': 'ChupManHinh',
-        'CFBundleDisplayName': 'CHỤP MÀN HÌNH',
+        'CFBundleName': 'Capture To Clipboard',
+        'CFBundleDisplayName': 'Capture To Clipboard',
         'CFBundleShortVersionString': '1.0.0',
         'CFBundleVersion': '1.0.0',
         'NSHighResolutionCapable': True,
         'LSMinimumSystemVersion': '11.0',
         'NSScreenCaptureUsageDescription': (
-            'Ứng dụng CHỤP MÀN HÌNH cần quyền Ghi màn hình (Screen Recording) '
+            'Capture To Clipboard cần quyền Ghi màn hình (Screen Recording) '
             'để chụp vùng màn hình sắc nét chất lượng cao.'
         ),
         'NSAppleEventsUsageDescription': (
-            'Ứng dụng CHỤP MÀN HÌNH cần quyền Trợ năng (Accessibility) '
+            'Capture To Clipboard cần quyền Trợ năng (Accessibility) '
             'để nhận phím tắt chụp nhanh Ctrl+1, Ctrl+2 và PrtSc.'
         ),
     },

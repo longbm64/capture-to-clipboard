@@ -68,6 +68,8 @@ def is_autostart_enabled() -> bool:
 
 def set_autostart_enabled(enabled: bool) -> Tuple[bool, str]:
     """Enable or disable auto-start on OS login. Returns (success, status_message)."""
+    from app.i18n import tr
+
     if sys.platform == "win32":
         try:
             import winreg
@@ -81,15 +83,15 @@ def set_autostart_enabled(enabled: bool) -> Tuple[bool, str]:
                 if enabled:
                     cmd = _get_windows_launch_command()
                     winreg.SetValueEx(key, APP_RUN_NAME, 0, winreg.REG_SZ, cmd)
-                    return True, "Đã bật khởi động cùng máy tính."
+                    return True, tr("toast_autostart_on")
                 else:
                     try:
                         winreg.DeleteValue(key, APP_RUN_NAME)
                     except FileNotFoundError:
                         pass
-                    return True, "Đã tắt khởi động cùng máy tính."
+                    return True, tr("toast_autostart_off")
         except Exception as exc:
-            return False, f"Không thể cập nhật cài đặt khởi động: {exc}"
+            return False, f"Autostart error: {exc}"
 
     if sys.platform == "darwin":
         plist_dir = Path.home() / "Library" / "LaunchAgents"
@@ -121,13 +123,13 @@ def set_autostart_enabled(enabled: bool) -> Tuple[bool, str]:
 </plist>
 """
                 plist_path.write_text(plist_content, encoding="utf-8")
-                return True, "Đã bật khởi động cùng macOS!"
+                return True, tr("toast_autostart_on")
             else:
                 if plist_path.exists():
                     plist_path.unlink()
-                return True, "Đã tắt khởi động cùng macOS."
+                return True, tr("toast_autostart_off")
         except Exception as exc:
-            return False, f"Lỗi cấu hình LaunchAgent trên macOS: {exc}"
+            return False, f"LaunchAgent error: {exc}"
 
     # Linux XDG Autostart
     autostart_dir = Path.home() / ".config" / "autostart"
@@ -142,20 +144,20 @@ def set_autostart_enabled(enabled: bool) -> Tuple[bool, str]:
                 exec_cmd = f'"{sys.executable}" "{main_script}" --minimized'
             desktop_content = f"""[Desktop Entry]
 Type=Application
-Name=Chup Man Hinh
+Name=Capture To Clipboard
 Comment=Screenshot region to clipboard and annotation tool
 Exec={exec_cmd}
 Terminal=false
 X-GNOME-Autostart-enabled=true
 """
             desktop_path.write_text(desktop_content, encoding="utf-8")
-            return True, "Đã bật khởi động cùng Linux!"
+            return True, tr("toast_autostart_on")
         else:
             if desktop_path.exists():
                 desktop_path.unlink()
-            return True, "Đã tắt khởi động cùng Linux."
+            return True, tr("toast_autostart_off")
     except Exception as exc:
-        return False, f"Lỗi cấu hình Autostart trên Linux: {exc}"
+        return False, f"Autostart error: {exc}"
 
 
 def _get_settings_file_path() -> Path:

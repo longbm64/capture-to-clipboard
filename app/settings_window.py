@@ -152,7 +152,7 @@ class ModernCheckbox(tk.Frame):
 
 
 class SettingsAndGuideWindow:
-    """Soft Daylight window displaying auto-start, PrtSc settings, and concise shortcut instructions."""
+    """Soft Daylight window displaying auto-start, PrtSc, language settings, and shortcut instructions."""
 
     # Soft Daylight Palette (fresh, bright, zero glare)
     BG_MAIN = "#edf2f7"
@@ -163,65 +163,6 @@ class SettingsAndGuideWindow:
     TEXT_PRIMARY = "#1e293b"
     TEXT_SECONDARY = "#475569"
 
-    SHORTCUTS_GUIDE = [
-        (
-            "Ctrl + 1 / PrtSc",
-            "#0284c7",
-            "#e0f2fe",
-            "Chụp & Sao chép ngay",
-            "Kéo chọn vùng màn hình để lưu ngay ảnh nét cao vào bộ nhớ tạm (nhấn Ctrl + V để dán).",
-        ),
-        (
-            "Ctrl + 2",
-            "#7c3aed",
-            "#f3e8ff",
-            "Chụp & Ghi chú trên ảnh",
-            "Kéo chọn vùng màn hình và mở bảng vẽ Mũi tên, Khung, Chữ, Bút dạ quang, Làm mờ...",
-        ),
-        (
-            "Kéo giữ chuột",
-            "#d97706",
-            "#fef3c7",
-            "Di chuyển nét đã vẽ",
-            "Nhấn giữ vào mũi tên, chữ hoặc khung đã vẽ để dời vị trí hoặc chỉnh lại hướng.",
-        ),
-        (
-            "Nhấp đúp chuột",
-            "#db2777",
-            "#fce7f3",
-            "Sửa nội dung chữ",
-            "Nhấp đúp chuột trái vào chữ đã thêm trên ảnh để chỉnh sửa lại nội dung.",
-        ),
-        (
-            "Enter / Ctrl + C",
-            "#059669",
-            "#d1fae5",
-            "Hoàn tất & Sao chép",
-            "Sao chép ảnh đã ghi chú vào bộ nhớ tạm và đóng cửa sổ vẽ.",
-        ),
-        (
-            "Ctrl + S",
-            "#0369a1",
-            "#e0f2fe",
-            "Lưu thành file ảnh",
-            "Lưu ảnh về máy tính với định dạng PNG, JPG hoặc WebP chất lượng cao.",
-        ),
-        (
-            "Ctrl + Z / Delete",
-            "#475569",
-            "#e2e8f0",
-            "Hoàn tác / Xóa nét vẽ",
-            "Nhấn Ctrl + Z để quay lại bước trước, hoặc nhấn Delete để xóa nét đang chọn.",
-        ),
-        (
-            "ESC / Chuột phải",
-            "#dc2626",
-            "#fee2e2",
-            "Hủy thao tác",
-            "Thoát nhanh màn hình chọn vùng chụp hoặc đóng cửa sổ hiện tại.",
-        ),
-    ]
-
     def __init__(
         self,
         root: tk.Tk,
@@ -229,18 +170,25 @@ class SettingsAndGuideWindow:
         on_trigger_ctrl2: Callable[[], None],
         on_autostart_changed: Optional[Callable[[bool], None]] = None,
         on_prtsc_changed: Optional[Callable[[bool], None]] = None,
+        on_language_changed: Optional[Callable[[str], None]] = None,
+        on_minimized_to_tray: Optional[Callable[[], None]] = None,
     ) -> None:
         self.root = root
         self.on_trigger_ctrl1 = on_trigger_ctrl1
         self.on_trigger_ctrl2 = on_trigger_ctrl2
         self.on_autostart_changed = on_autostart_changed
         self.on_prtsc_changed = on_prtsc_changed
+        self.on_language_changed = on_language_changed
+        self.on_minimized_to_tray = on_minimized_to_tray
         self.win: Optional[tk.Toplevel] = None
-        self._app_icon_tk: Optional[ImageTk.PhotoImage] = None
+        self._body_frame: Optional[tk.Frame] = None
+        self._closing = False
         self._checkbox: Optional[ModernCheckbox] = None
         self._status_lbl: Optional[tk.Label] = None
         self._prtsc_checkbox: Optional[ModernCheckbox] = None
         self._prtsc_status_lbl: Optional[tk.Label] = None
+        self._lang_btn_vi: Optional[ModernPillButton] = None
+        self._lang_btn_en: Optional[ModernPillButton] = None
 
     def show(self) -> None:
         """Open or bring the Settings & Guide window to the front."""
@@ -256,6 +204,7 @@ class SettingsAndGuideWindow:
                         self._prtsc_checkbox.set_checked(prtsc_val)
                     self._update_status_label(self._prtsc_status_lbl, prtsc_val)
                     self.win.deiconify()
+                    self.win.state("normal")
                     self.win.lift()
                     self.win.focus_force()
                     return
@@ -265,12 +214,14 @@ class SettingsAndGuideWindow:
 
         self._build_window()
 
-    def _build_window(self) -> None:
+    def _build_window(self, preserve_pos: Optional[ tuple[int, int] ] = None) -> None:
+        from app.i18n import APP_NAME
         from app.tray import apply_window_icon
 
+        self._closing = False
         win = tk.Toplevel(self.root)
         self.win = win
-        win.title("𝗖𝗛Ụ𝗣 𝗠À𝗡 𝗛Ì𝗡𝗛")
+        win.title(APP_NAME)
         win.configure(bg=self.BG_MAIN)
         win.resizable(False, False)
         apply_window_icon(win)
@@ -279,11 +230,44 @@ class SettingsAndGuideWindow:
         except Exception:
             pass
 
+        self._populate_window_content(win)
+
+        win.bind("<Escape>", lambda _e: self.minimize_to_tray())
+        win.protocol("WM_DELETE_WINDOW", self.minimize_to_tray)
+        win.bind("<Unmap>", self._on_window_unmap)
+
+        win.update_idletasks()
+        w = win.winfo_reqwidth()
+        h = win.winfo_reqheight()
+        if preserve_pos is not None:
+            x, y = preserve_pos
+        else:
+            sw = self.root.winfo_screenwidth()
+            sh = self.root.winfo_screenheight()
+            x = max(16, (sw - w) // 2)
+            y = max(16, (sh - h) // 2 - 20)
+        win.geometry(f"{w}x{h}+{x}+{y}")
+        win.lift()
+        try:
+            win.focus_force()
+        except Exception:
+            pass
+
+    def _populate_window_content(self, win: tk.Toplevel) -> None:
+        from app.i18n import get_language, get_shortcuts_guide, tr
+
+        if self._body_frame is not None:
+            try:
+                self._body_frame.destroy()
+            except Exception:
+                pass
+
         # ==================== MAIN BODY ====================
         body = tk.Frame(win, bg=self.BG_MAIN, padx=22, pady=18)
         body.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
+        self._body_frame = body
 
-        # --- Card 1: Settings (Auto-start & PrtSc key) ---
+        # --- Card 1: Settings (Auto-start, PrtSc key & Language) ---
         card_setting_border = tk.Frame(body, bg=self.BORDER_SOFT, padx=1, pady=1)
         card_setting_border.pack(side=tk.TOP, fill=tk.X, pady=(0, 14))
 
@@ -297,7 +281,7 @@ class SettingsAndGuideWindow:
         current_auto = is_autostart_enabled()
         self._checkbox = ModernCheckbox(
             row_auto,
-            title="Khởi động cùng máy tính",
+            title=tr("settings_autostart_title"),
             initial_checked=current_auto,
             on_toggle=self._on_toggle_autostart,
             bg=self.BG_CARD,
@@ -315,7 +299,7 @@ class SettingsAndGuideWindow:
         self._status_lbl.pack(side=tk.RIGHT)
         self._update_status_label(self._status_lbl, current_auto)
 
-        # Subtle divider between the 2 checkboxes
+        # Subtle divider
         tk.Frame(card_setting, bg="#e2e8f0", height=1).pack(
             side=tk.TOP, fill=tk.X, pady=6
         )
@@ -327,7 +311,7 @@ class SettingsAndGuideWindow:
         current_prtsc = is_prtsc_enabled()
         self._prtsc_checkbox = ModernCheckbox(
             row_prtsc,
-            title="Bấm phím PrtSc để chụp nhanh (tương tự Ctrl + 1)",
+            title=tr("settings_prtsc_title"),
             initial_checked=current_prtsc,
             on_toggle=self._on_toggle_prtsc,
             bg=self.BG_CARD,
@@ -345,10 +329,77 @@ class SettingsAndGuideWindow:
         self._prtsc_status_lbl.pack(side=tk.RIGHT)
         self._update_status_label(self._prtsc_status_lbl, current_prtsc)
 
+        # Subtle divider
+        tk.Frame(card_setting, bg="#e2e8f0", height=1).pack(
+            side=tk.TOP, fill=tk.X, pady=6
+        )
+
+        # Row 3: Language Selector (Tiếng Việt / English)
+        row_lang = tk.Frame(card_setting, bg=self.BG_CARD, pady=4)
+        row_lang.pack(side=tk.TOP, fill=tk.X)
+
+        lang_lbl = tk.Label(
+            row_lang,
+            text=tr("settings_lang_title"),
+            font=("Roboto", 11, "bold"),
+            fg=self.TEXT_PRIMARY,
+            bg=self.BG_CARD,
+            anchor=tk.W,
+        )
+        lang_lbl.pack(side=tk.LEFT, fill=tk.X, expand=True)
+
+        lang_btn_frame = tk.Frame(row_lang, bg=self.BG_CARD)
+        lang_btn_frame.pack(side=tk.RIGHT)
+
+        cur_lang = get_language()
+        self._lang_btn_vi = ModernPillButton(
+            lang_btn_frame,
+            text="Tiếng Việt",
+            icon_name=None,
+            parent_bg=self.BG_CARD,
+            bg_normal="#f1f5f9",
+            bg_hover="#e0f2fe",
+            bg_active="#0284c7",
+            fg_normal="#334155",
+            fg_hover="#0369a1",
+            fg_active="#ffffff",
+            border_normal="#cbd5e1",
+            border_hover="#7dd3fc",
+            border_active=None,
+            font_pt=10,
+            height_pt=28,
+            pad_x_pt=12,
+            command=lambda: self._on_select_language("vi"),
+        )
+        self._lang_btn_vi.pack(side=tk.LEFT, padx=(0, 6))
+        self._lang_btn_vi.set_active(cur_lang == "vi")
+
+        self._lang_btn_en = ModernPillButton(
+            lang_btn_frame,
+            text="English",
+            icon_name=None,
+            parent_bg=self.BG_CARD,
+            bg_normal="#f1f5f9",
+            bg_hover="#e0f2fe",
+            bg_active="#0284c7",
+            fg_normal="#334155",
+            fg_hover="#0369a1",
+            fg_active="#ffffff",
+            border_normal="#cbd5e1",
+            border_hover="#7dd3fc",
+            border_active=None,
+            font_pt=10,
+            height_pt=28,
+            pad_x_pt=12,
+            command=lambda: self._on_select_language("en"),
+        )
+        self._lang_btn_en.pack(side=tk.LEFT)
+        self._lang_btn_en.set_active(cur_lang == "en")
+
         # --- Card 2: Shortcuts & Usage Guide Table ---
         guide_title = tk.Label(
             body,
-            text="PHÍM TẮT & HƯỚNG DẪN NHANH",
+            text=tr("guide_section_title"),
             font=("Roboto", 10, "bold"),
             fg="#0369a1",
             bg=self.BG_MAIN,
@@ -366,9 +417,9 @@ class SettingsAndGuideWindow:
         # Table Header Row
         hdr_bg = "#e2e8f0"
         headers = [
-            ("PHÍM TẮT", tk.CENTER),
-            ("CHỨC NĂNG", tk.W),
-            ("MÔ TẢ THAO TÁC", tk.W),
+            (tr("table_col_shortcut"), tk.CENTER),
+            (tr("table_col_function"), tk.W),
+            (tr("table_col_desc"), tk.W),
         ]
         for col_idx, (hdr_text, hdr_anchor) in enumerate(headers):
             hdr_cell = tk.Frame(table_grid, bg=hdr_bg, padx=14, pady=8)
@@ -395,7 +446,7 @@ class SettingsAndGuideWindow:
             key_bg,
             action_title,
             desc_text,
-        ) in enumerate(self.SHORTCUTS_GUIDE, start=1):
+        ) in enumerate(get_shortcuts_guide(), start=1):
             row_bg = self.BG_CARD if row_idx % 2 == 1 else self.BG_ROW_ALT
 
             # Column 0: Key badge cell (centered)
@@ -448,39 +499,41 @@ class SettingsAndGuideWindow:
             )
             desc_lbl.pack(fill=tk.X, expand=True)
 
-        win.bind("<Escape>", lambda _e: self.close())
-        win.protocol("WM_DELETE_WINDOW", self.close)
-
-        win.update_idletasks()
-        w = win.winfo_reqwidth()
-        h = win.winfo_reqheight()
-        sw = self.root.winfo_screenwidth()
-        sh = self.root.winfo_screenheight()
-        x = max(16, (sw - w) // 2)
-        y = max(16, (sh - h) // 2 - 20)
-        win.geometry(f"{w}x{h}+{x}+{y}")
-        win.lift()
-        try:
-            win.focus_force()
-        except Exception:
-            pass
-
     @staticmethod
     def _update_status_label(lbl: Optional[tk.Label], enabled: bool) -> None:
+        from app.i18n import tr
+
         if lbl is None:
             return
         if enabled:
             lbl.configure(
-                text="✓ Đang bật",
+                text=tr("status_enabled"),
                 fg="#047857",
                 bg="#d1fae5",
             )
         else:
             lbl.configure(
-                text="Đang tắt",
+                text=tr("status_disabled"),
                 fg="#64748b",
                 bg="#f1f5f9",
             )
+
+    def _on_select_language(self, lang: str) -> None:
+        from app.i18n import get_language, set_language
+
+        if lang == get_language():
+            return
+        set_language(lang)
+        if self.win is not None and self.win.winfo_exists():
+            cur_x = self.win.winfo_x()
+            cur_y = self.win.winfo_y()
+            self._populate_window_content(self.win)
+            self.win.update_idletasks()
+            w = self.win.winfo_reqwidth()
+            h = self.win.winfo_reqheight()
+            self.win.geometry(f"{w}x{h}+{cur_x}+{cur_y}")
+        if self.on_language_changed is not None:
+            self.on_language_changed(lang)
 
     def _on_toggle_autostart(self, enabled: bool) -> None:
         ok, _msg = set_autostart_enabled(enabled)
@@ -500,6 +553,28 @@ class SettingsAndGuideWindow:
         if self.on_prtsc_changed is not None:
             self.on_prtsc_changed(actual)
 
+    def _on_window_unmap(self, event: tk.Event) -> None:
+        """Detect when user clicks the '-' (Minimize) button and hide window to System Tray."""
+        if event.widget is not self.win or self._closing:
+            return
+        self.root.after(15, self._check_minimized_state)
+
+    def _check_minimized_state(self) -> None:
+        if self.win is None or self._closing:
+            return
+        try:
+            if self.win.winfo_exists() and self.win.state() == "iconic":
+                self.minimize_to_tray()
+        except Exception:
+            pass
+
+    def minimize_to_tray(self) -> None:
+        """Close/hide the window to the System Tray when clicking X or -."""
+        was_open = self.win is not None
+        self.close()
+        if was_open and self.on_minimized_to_tray is not None:
+            self.on_minimized_to_tray()
+
     def _trigger_1_from_window(self) -> None:
         self.close()
         self.on_trigger_ctrl1()
@@ -509,9 +584,11 @@ class SettingsAndGuideWindow:
         self.on_trigger_ctrl2()
 
     def close(self) -> None:
+        self._closing = True
         if self.win is not None:
             try:
                 self.win.destroy()
             except Exception:
                 pass
             self.win = None
+            self._body_frame = None

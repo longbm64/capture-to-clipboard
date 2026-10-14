@@ -54,9 +54,11 @@ class CaptureApp:
             except Exception:
                 pass
 
+        from app.i18n import APP_NAME
+
         self.root = tk.Tk()
         self.root.withdraw()
-        self.root.title("𝗖𝗛Ụ𝗣 𝗠À𝗡 𝗛Ì𝗡𝗛")
+        self.root.title(APP_NAME)
         apply_window_icon(self.root)
 
         self.event_queue: "queue.Queue[Tuple[str, bool]]" = queue.Queue()
@@ -70,6 +72,8 @@ class CaptureApp:
             on_trigger_ctrl2=lambda: self.event_queue.put(("capture_draw", True)),
             on_autostart_changed=self._on_autostart_changed_from_ui,
             on_prtsc_changed=self._on_prtsc_changed_from_ui,
+            on_language_changed=self._on_language_changed_from_ui,
+            on_minimized_to_tray=self._on_window_minimized_to_tray,
         )
 
         self.hotkeys = GlobalHotkeyManager(
@@ -87,6 +91,8 @@ class CaptureApp:
 
     def start(self) -> None:
         """Start background services and enter the main GUI event loop."""
+        from app.i18n import tr
+
         self.hotkeys.start()
         self.tray.start()
 
@@ -99,7 +105,7 @@ class CaptureApp:
             200,
             lambda: ToastNotification.show(
                 self.root,
-                "Ứng dụng đã sẵn sàng  •  Ctrl+1 / PrtSc: Chụp nhanh  |  Ctrl+2: Chụp & Ghi chú",
+                tr("toast_ready"),
                 success=True,
                 duration_ms=2600,
             ),
@@ -143,24 +149,35 @@ class CaptureApp:
             self.root.after(30, self._poll_events)
 
     def _on_autostart_changed_from_ui(self, enabled: bool) -> None:
+        from app.i18n import tr
+
         self.tray.refresh_menu()
-        msg = (
-            "Đã bật khởi động cùng máy tính."
-            if enabled
-            else "Đã tắt khởi động cùng máy tính."
-        )
+        msg = tr("toast_autostart_on") if enabled else tr("toast_autostart_off")
         ToastNotification.show(self.root, msg, success=True, duration_ms=1800)
 
     def _on_prtsc_changed_from_ui(self, enabled: bool) -> None:
+        from app.i18n import tr
+
         self.hotkeys.set_prtsc_enabled(enabled)
-        msg = (
-            "Đã bật chụp nhanh bằng phím PrtSc."
-            if enabled
-            else "Đã tắt chụp nhanh bằng phím PrtSc."
-        )
+        msg = tr("toast_prtsc_on") if enabled else tr("toast_prtsc_off")
         ToastNotification.show(self.root, msg, success=True, duration_ms=1800)
 
+    def _on_language_changed_from_ui(self, _lang: str) -> None:
+        self.tray.refresh_menu()
+
+    def _on_window_minimized_to_tray(self) -> None:
+        from app.i18n import tr
+
+        ToastNotification.show(
+            self.root,
+            tr("toast_minimized_tray"),
+            success=True,
+            duration_ms=1800,
+        )
+
     def _begin_capture(self, mode: int) -> None:
+        from app.i18n import tr
+
         if self._overlay_active or self._shutting_down:
             return
 
@@ -172,18 +189,18 @@ class CaptureApp:
             self._overlay_active = False
             ToastNotification.show(
                 self.root,
-                f"Không thể chụp màn hình: {exc}",
+                tr("toast_capture_err", err=exc),
                 success=False,
                 duration_ms=3000,
             )
             return
 
         if mode == 1:
-            mode_title = "⚡ Ctrl + 1 : Kéo chọn vùng để sao chép ảnh ngay"
+            mode_title = tr("overlay_ctrl1_title")
             accent = "#0284c7"
             on_done = self._handle_instant_clipboard
         else:
-            mode_title = "🎨 Ctrl + 2 : Kéo chọn vùng để thêm ghi chú"
+            mode_title = tr("overlay_ctrl2_title")
             accent = "#7c3aed"
             on_done = self._handle_open_editor
 
@@ -201,13 +218,15 @@ class CaptureApp:
         self._overlay_active = False
 
     def _handle_instant_clipboard(self, cropped_img: Image.Image) -> None:
+        from app.i18n import tr
+
         self._overlay_active = False
         hd_img = enhance_image_quality(cropped_img, upscale_hd=True)
         ok, msg = copy_image_to_clipboard(hd_img)
         if ok:
             ToastNotification.show(
                 self.root,
-                f"Đã sao chép ảnh sắc nét ({hd_img.width}×{hd_img.height} px) vào bộ nhớ tạm!",
+                tr("toast_copied_fast", w=hd_img.width, h=hd_img.height),
                 success=True,
                 duration_ms=2000,
             )
@@ -240,12 +259,14 @@ class CaptureApp:
         )
 
     def _handle_editor_copy(self, edited_img: Image.Image) -> None:
+        from app.i18n import tr
+
         self._active_editor = None
         ok, msg = copy_image_to_clipboard(edited_img)
         if ok:
             ToastNotification.show(
                 self.root,
-                f"Đã sao chép ảnh ghi chú ({edited_img.width}×{edited_img.height} px) vào bộ nhớ tạm!",
+                tr("toast_copied_draw", w=edited_img.width, h=edited_img.height),
                 success=True,
                 duration_ms=2200,
             )
