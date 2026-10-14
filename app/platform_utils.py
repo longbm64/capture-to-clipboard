@@ -265,8 +265,9 @@ def capture_virtual_screen(root=None) -> Tuple[Image.Image, Dict[str, int]]:
                 with Image.open(tmp_path) as captured:
                     img = captured.convert("RGB")
                 geom = get_virtual_screen_geometry(root)
-                geom["width"] = img.width
-                geom["height"] = img.height
+                if sys.platform != "darwin":
+                    geom["width"] = img.width
+                    geom["height"] = img.height
                 return img, geom
     except Exception:
         pass

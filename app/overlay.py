@@ -1,7 +1,6 @@
-"""Fullscreen Region Selection Overlay and Toast Notification UI."""
-
 from __future__ import annotations
 
+import sys
 import tkinter as tk
 from typing import Callable, Dict, Optional
 
@@ -146,10 +145,12 @@ class RegionSelectorOverlay:
         else:
             self.display_bright = screenshot
 
-        self.display_dimmed = self.display_bright.point(lambda p: int(p * 0.52))
+        # Brighten dimmed overlay (0.78 keeps 78% brightness so screen content is easy to see)
+        self.display_dimmed = self.display_bright.point(lambda p: int(p * 0.78))
 
         self.top = tk.Toplevel(self.root)
-        self.top.withdraw()
+        if sys.platform != "darwin":
+            self.top.withdraw()
         self.top.overrideredirect(True)
         try:
             self.top.attributes("-topmost", True)
@@ -159,7 +160,7 @@ class RegionSelectorOverlay:
         self.top.geometry(
             f"{self.win_width}x{self.win_height}+{self.win_left}+{self.win_top}"
         )
-        self.top.configure(bg="#000000", cursor="crosshair")
+        self.top.configure(bg="#334155", cursor="crosshair")
 
         self.canvas = tk.Canvas(
             self.top,
@@ -167,7 +168,7 @@ class RegionSelectorOverlay:
             height=self.win_height,
             highlightthickness=0,
             bd=0,
-            bg="#000000",
+            bg="#334155",
             cursor="crosshair",
         )
         self.canvas.pack(fill=tk.BOTH, expand=True)
@@ -175,14 +176,16 @@ class RegionSelectorOverlay:
         self._tk_dimmed = ImageTk.PhotoImage(self.display_dimmed)
         self._tk_crop_patch: Optional[ImageTk.PhotoImage] = None
 
-        self.canvas.create_image(0, 0, anchor=tk.NW, image=self._tk_dimmed)
+        self._bg_image_id = self.canvas.create_image(
+            0, 0, anchor=tk.NW, image=self._tk_dimmed
+        )
 
         self._crop_image_id = self.canvas.create_image(0, 0, anchor=tk.NW, state="hidden")
         self._guide_h_id = self.canvas.create_line(
-            0, 0, 0, 0, fill="#cbd5e1", dash=(3, 3), width=1
+            0, 0, 0, 0, fill="#f8fafc", dash=(3, 3), width=1
         )
         self._guide_v_id = self.canvas.create_line(
-            0, 0, 0, 0, fill="#cbd5e1", dash=(3, 3), width=1
+            0, 0, 0, 0, fill="#f8fafc", dash=(3, 3), width=1
         )
         self._rect_id = self.canvas.create_rectangle(
             0, 0, 0, 0, outline=self.accent_color, width=2, state="hidden"
@@ -211,10 +214,46 @@ class RegionSelectorOverlay:
 
         self.top.deiconify()
         self.top.lift()
+        self._activate_and_refresh_overlay()
+
+    def _activate_and_refresh_overlay(self) -> None:
+        """Ensure macOS Aqua & Windows immediately paint the canvas without waiting for a mouse click."""
+        if sys.platform == "darwin":
+            try:
+                from AppKit import NSApplication
+
+                NSApplication.sharedApplication().activateIgnoringOtherApps_(True)
+            except Exception:
+                pass
+
         try:
             self.top.focus_force()
             self.canvas.focus_set()
             self.top.grab_set()
+        except Exception:
+            pass
+
+        self._force_canvas_redraw()
+        for delay_ms in (5, 20, 50, 100, 180):
+            try:
+                self.top.after(delay_ms, self._force_canvas_redraw)
+            except Exception:
+                pass
+
+    def _force_canvas_redraw(self, _event=None) -> None:
+        if self._closed or self._dragging:
+            return
+        try:
+            if not self.top.winfo_exists():
+                return
+            px = max(0, min(self.win_width, self.top.winfo_pointerx() - self.win_left))
+            py = max(0, min(self.win_height, self.top.winfo_pointery() - self.win_top))
+            self.canvas.itemconfigure(self._bg_image_id, state="hidden")
+            self.canvas.itemconfigure(self._bg_image_id, state="normal", image=self._tk_dimmed)
+            self.canvas.coords(self._guide_h_id, 0, py, self.win_width, py)
+            self.canvas.coords(self._guide_v_id, px, 0, px, self.win_height)
+            self.canvas.update_idletasks()
+            self.top.update()
         except Exception:
             pass
 
@@ -254,6 +293,8 @@ class RegionSelectorOverlay:
         self.canvas.bind("<ButtonRelease-1>", self._on_mouse_up)
         self.canvas.bind("<ButtonPress-2>", self._cancel)
         self.canvas.bind("<ButtonPress-3>", self._cancel)
+        self.canvas.bind("<Expose>", self._force_canvas_redraw)
+        self.top.bind("<Map>", self._force_canvas_redraw)
         self.top.bind("<Escape>", self._cancel)
         self.canvas.bind("<Escape>", self._cancel)
 
