@@ -22,7 +22,7 @@ exe = EXE(
     a.binaries,
     a.datas,
     [],
-    name='ChupManHinh',
+    name='CaptureToClipboard',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
