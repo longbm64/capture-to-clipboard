@@ -6,10 +6,14 @@ echo ========================================================
 
 cd /d "%~dp0"
 
+taskkill /F /IM CaptureToClipboard.exe >nul 2>&1
+taskkill /F /IM ChupManHinh.exe >nul 2>&1
+
 python -m pip install -r requirements.txt pyinstaller
 python -c "from app.tray import ensure_logo_assets; ensure_logo_assets()"
 
 python -m PyInstaller --noconfirm --clean --noconsole --onefile ^
+    --workpath "%TEMP%\CaptureToClipboard_build" ^
     --name "CaptureToClipboard" ^
     --icon "assets/logo.ico" ^
     --add-data "assets;assets" ^
