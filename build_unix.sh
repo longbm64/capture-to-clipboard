@@ -7,8 +7,16 @@ echo "========================================================"
 echo "  Building ChupManHinh standalone app (macOS / Linux)"
 echo "========================================================"
 
+export PATH="/opt/homebrew/opt/python@3.14/libexec/bin:/opt/homebrew/opt/python@3.13/libexec/bin:/opt/homebrew/opt/python@3.12/libexec/bin:/opt/homebrew/bin:/usr/local/bin:$PATH"
+hash -r 2>/dev/null || true
+
+PYTHON_BIN="$(command -v python3.14 || command -v python3.13 || command -v python3.12 || command -v python3)"
+
+if [[ -d ".venv" ]] && [[ ! -x ".venv/bin/python" ]]; then
+    rm -rf .venv
+fi
 if [[ ! -d ".venv" ]]; then
-    python3 -m venv .venv
+    "$PYTHON_BIN" -m venv .venv
 fi
 source .venv/bin/activate
 

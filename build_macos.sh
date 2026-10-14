@@ -13,22 +13,62 @@ if [[ "$(uname -s)" != "Darwin" ]]; then
     exit 1
 fi
 
+export PATH="/opt/homebrew/opt/python@3.14/libexec/bin:/opt/homebrew/opt/python@3.13/libexec/bin:/opt/homebrew/opt/python@3.12/libexec/bin:/opt/homebrew/bin:/usr/local/bin:$PATH"
+hash -r 2>/dev/null || true
+
+find_python_bin() {
+    for candidate in \
+        "/opt/homebrew/bin/python3.14" \
+        "/opt/homebrew/opt/python@3.14/libexec/bin/python3" \
+        "/opt/homebrew/bin/python3.13" \
+        "/opt/homebrew/opt/python@3.13/libexec/bin/python3" \
+        "/opt/homebrew/bin/python3.12" \
+        "/opt/homebrew/opt/python@3.12/libexec/bin/python3" \
+        "/opt/homebrew/bin/python3" \
+        "$(command -v python3 2>/dev/null || true)" \
+        "/usr/local/bin/python3" \
+        "/usr/bin/python3"; do
+        if [[ -n "$candidate" && -x "$candidate" ]]; then
+            echo "$candidate"
+            return 0
+        fi
+    done
+    return 1
+}
+
+PYTHON_BIN="$(find_python_bin)"
+if [[ -z "$PYTHON_BIN" ]]; then
+    echo "[ERROR] Không tìm thấy Python 3 trên máy. Hãy cài bằng: brew install python"
+    exit 1
+fi
+echo "-> Sử dụng Python: $PYTHON_BIN ($("$PYTHON_BIN" --version))"
+
 # 1. Kiểm tra module tkinter trên macOS (Homebrew tách riêng gói python-tk)
-if ! python3 -c "import tkinter" >/dev/null 2>&1; then
+if ! "$PYTHON_BIN" -c "import tkinter" >/dev/null 2>&1; then
     echo "-> Phát hiện thiếu module tkinter, đang tự động cài đặt python-tk qua Homebrew..."
-    PY_MM=$(python3 -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')")
+    PY_MM=$("$PYTHON_BIN" -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')")
     if command -v brew >/dev/null 2>&1; then
         brew install "python-tk@${PY_MM}" || brew install python-tk
+        hash -r 2>/dev/null || true
+        PYTHON_BIN="$(find_python_bin)"
+        echo "-> Đã cập nhật đường dẫn Python: $PYTHON_BIN"
     else
         echo "[ERROR] Python hiện tại chưa có tkinter. Hãy chạy: brew install python-tk@${PY_MM}"
         exit 1
     fi
 fi
 
-# 2. Tạo và kích hoạt môi trường ảo (.venv) để tránh lỗi PEP 668 externally-managed-environment
+# 2. Tạo và kích hoạt môi trường ảo (.venv)
 echo "-> Đang chuẩn bị môi trường ảo (.venv)..."
+if [[ -d ".venv" ]]; then
+    if [[ ! -x ".venv/bin/python" ]] || ! .venv/bin/python -c "import tkinter" >/dev/null 2>&1; then
+        echo "-> Làm mới lại .venv để đồng bộ với $PYTHON_BIN..."
+        rm -rf .venv
+    fi
+fi
+
 if [[ ! -d ".venv" ]]; then
-    python3 -m venv .venv
+    "$PYTHON_BIN" -m venv .venv
 fi
 source .venv/bin/activate
 
