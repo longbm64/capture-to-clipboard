@@ -1,6 +1,13 @@
 #!/usr/bin/env bash
 set -e
-DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-cd "$DIR"
-nohup python3 main.py >/dev/null 2>&1 &
-echo "Capture to Clipboard da san sang (PID: $!). Nhan Ctrl+1 hoac Ctrl+2 de chup man hinh."
+
+cd "$(dirname "$0")"
+
+if [[ ! -d ".venv" ]]; then
+    python3 -m venv .venv
+fi
+source .venv/bin/activate
+
+python -m pip install -r requirements.txt --quiet
+nohup python main.py >/dev/null 2>&1 &
+echo "Đã khởi chạy CHỤP MÀN HÌNH!"

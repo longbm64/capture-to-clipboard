@@ -7,10 +7,16 @@ echo "========================================================"
 echo "  Building ChupManHinh standalone app (macOS / Linux)"
 echo "========================================================"
 
-python3 -m pip install -r requirements.txt pyinstaller
-python3 -c "from app.tray import ensure_logo_assets; ensure_logo_assets()"
+if [[ ! -d ".venv" ]]; then
+    python3 -m venv .venv
+fi
+source .venv/bin/activate
 
-python3 -m PyInstaller --noconfirm --clean --windowed --onefile \
+python -m pip install --upgrade pip
+python -m pip install -r requirements.txt pyinstaller
+python -c "from app.tray import ensure_logo_assets; ensure_logo_assets()"
+
+python -m PyInstaller --noconfirm --clean --windowed --onefile \
     --name "ChupManHinh" \
     --icon "assets/logo.png" \
     --add-data "assets:assets" \
