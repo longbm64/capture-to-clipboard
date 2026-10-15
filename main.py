@@ -10,6 +10,8 @@ Tray Icon:
 from __future__ import annotations
 
 import argparse
+import os
+from pathlib import Path
 import queue
 import signal
 import sys
@@ -22,6 +24,7 @@ from app.autostart import (
     is_autostart_enabled,
     is_prtsc_enabled,
     set_autostart_enabled,
+    sync_autostart_on_startup,
 )
 from app.editor import AnnotationEditor
 from app.hotkeys import GlobalHotkeyManager
@@ -38,12 +41,16 @@ from app.tray import (
     apply_window_icon,
 )
 
+_SINGLE_INSTANCE_MUTEX: Optional[int] = None
+_SHOW_SETTINGS_EVENT: Optional[int] = None
+
 
 class CaptureApp:
     """Coordinates the hidden Tkinter main loop, System Tray, Settings Window, and Global Hotkeys."""
 
     def __init__(self) -> None:
         enable_dpi_awareness()
+        sync_autostart_on_startup()
         if sys.platform == "win32":
             try:
                 import ctypes
@@ -89,25 +96,29 @@ class CaptureApp:
             on_exit=lambda: self.event_queue.put(("exit", False)),
         )
 
-    def start(self) -> None:
+    def start(self, minimized: bool = False) -> None:
         """Start background services and enter the main GUI event loop."""
         from app.i18n import tr
 
         self.hotkeys.start()
         self.tray.start()
 
+        for delay_ms in (1500, 4000, 8000):
+            self.root.after(delay_ms, self.tray.ensure_visible)
+
         try:
             signal.signal(signal.SIGINT, lambda *_: self.event_queue.put(("exit", False)))
         except Exception:
             pass
 
+        toast_delay = 1200 if minimized else 200
         self.root.after(
-            200,
+            toast_delay,
             lambda: ToastNotification.show(
                 self.root,
                 tr("toast_ready"),
                 success=True,
-                duration_ms=2600,
+                duration_ms=2800,
             ),
         )
 
@@ -118,30 +129,43 @@ class CaptureApp:
         if self._shutting_down:
             return
 
+        if sys.platform == "win32" and _SHOW_SETTINGS_EVENT:
+            try:
+                import ctypes
+
+                if ctypes.windll.kernel32.WaitForSingleObject(_SHOW_SETTINGS_EVENT, 0) == 0:
+                    ctypes.windll.kernel32.ResetEvent(_SHOW_SETTINGS_EVENT)
+                    self.event_queue.put(("open_settings", False))
+            except Exception:
+                pass
+
         try:
             while True:
                 action, from_tray = self.event_queue.get_nowait()
-                if action == "exit":
-                    self.shutdown()
-                    return
-                elif action == "open_settings":
-                    self.settings_window.show()
-                elif action == "toggle_autostart":
-                    new_state = not is_autostart_enabled()
-                    ok, msg = set_autostart_enabled(new_state)
-                    self.tray.refresh_menu()
-                    ToastNotification.show(
-                        self.root,
-                        msg,
-                        success=ok,
-                        duration_ms=2000,
-                    )
-                elif action == "capture_clipboard":
-                    delay = 180 if from_tray else 10
-                    self.root.after(delay, lambda: self._begin_capture(mode=1))
-                elif action == "capture_draw":
-                    delay = 180 if from_tray else 10
-                    self.root.after(delay, lambda: self._begin_capture(mode=2))
+                try:
+                    if action == "exit":
+                        self.shutdown()
+                        return
+                    elif action == "open_settings":
+                        self.settings_window.show()
+                    elif action == "toggle_autostart":
+                        new_state = not is_autostart_enabled()
+                        ok, msg = set_autostart_enabled(new_state)
+                        self.tray.refresh_menu()
+                        ToastNotification.show(
+                            self.root,
+                            msg,
+                            success=ok,
+                            duration_ms=2000,
+                        )
+                    elif action == "capture_clipboard":
+                        delay = 180 if from_tray else 10
+                        self.root.after(delay, lambda: self._begin_capture(mode=1))
+                    elif action == "capture_draw":
+                        delay = 180 if from_tray else 10
+                        self.root.after(delay, lambda: self._begin_capture(mode=2))
+                except Exception as exc:
+                    print(f"[Error] Event '{action}' failed: {exc}")
         except queue.Empty:
             pass
 
@@ -176,13 +200,28 @@ class CaptureApp:
         )
 
     def _begin_capture(self, mode: int) -> None:
-        from app.i18n import tr
-
         if self._overlay_active or self._shutting_down:
             return
 
+        was_settings_visible = self.settings_window.is_visible()
         self.settings_window.close()
         self._overlay_active = True
+        if was_settings_visible:
+            try:
+                self.root.update_idletasks()
+            except Exception:
+                pass
+            self.root.after(65, lambda: self._execute_capture(mode))
+        else:
+            self._execute_capture(mode)
+
+    def _execute_capture(self, mode: int) -> None:
+        from app.i18n import tr
+
+        if self._shutting_down:
+            self._overlay_active = False
+            return
+
         try:
             screenshot, geom = capture_virtual_screen(self.root)
         except Exception as exc:
@@ -286,7 +325,7 @@ class CaptureApp:
             return
         self._shutting_down = True
         try:
-            self.settings_window.close()
+            self.settings_window.close(destroy=True)
         except Exception:
             pass
         try:
@@ -312,10 +351,10 @@ def run_self_test() -> int:
     assert icon_img.size == (64, 64), "Icon size mismatch"
     print("  -> OK")
 
-    print("[Self-Test] 2. Kiểm tra nâng cấp chất lượng ảnh HD & copy vào Clipboard...")
+    print("[Self-Test] 2. Kiểm tra giữ nguyên chất lượng ảnh gốc Lossless 1:1 & copy vào Clipboard...")
     test_img = Image.new("RGB", (240, 120), (37, 99, 235))
     hd_img = enhance_image_quality(test_img, upscale_hd=True)
-    assert hd_img.size == (480, 240), f"Expected (480, 240), got {hd_img.size}"
+    assert hd_img.size == (240, 120), f"Expected (240, 120), got {hd_img.size}"
     ok, msg = copy_image_to_clipboard(hd_img)
     print(f"  -> {ok}: {msg} (Size: {hd_img.size})")
 
@@ -332,7 +371,47 @@ def run_self_test() -> int:
     return 0
 
 
+def _ensure_single_instance(minimized: bool) -> bool:
+    """Ensure only one instance runs. If already running and not --minimized, signal it to open settings."""
+    global _SINGLE_INSTANCE_MUTEX, _SHOW_SETTINGS_EVENT
+    if sys.platform != "win32":
+        return True
+    try:
+        import ctypes
+
+        kernel32 = ctypes.windll.kernel32
+        ERROR_ALREADY_EXISTS = 183
+        _SHOW_SETTINGS_EVENT = kernel32.CreateEventW(
+            None, True, False, "Local\\CaptureToClipboard_ShowSettings_Event"
+        )
+        _SINGLE_INSTANCE_MUTEX = kernel32.CreateMutexW(
+            None, False, "Local\\CaptureToClipboard_SingleInstance_Mutex"
+        )
+        if kernel32.GetLastError() == ERROR_ALREADY_EXISTS:
+            if not minimized and _SHOW_SETTINGS_EVENT:
+                kernel32.SetEvent(_SHOW_SETTINGS_EVENT)
+            return False
+    except Exception:
+        pass
+    return True
+
+
 def main() -> int:
+    if sys.stdout is None:
+        sys.stdout = open(os.devnull, "w", encoding="utf-8")
+    if sys.stderr is None:
+        sys.stderr = open(os.devnull, "w", encoding="utf-8")
+
+    try:
+        app_dir = (
+            Path(sys.executable).resolve().parent
+            if getattr(sys, "frozen", False)
+            else Path(__file__).resolve().parent
+        )
+        os.chdir(app_dir)
+    except Exception:
+        pass
+
     parser = argparse.ArgumentParser(
         description="Capture to Clipboard - Ứng dụng chụp màn hình HD đa nền tảng (Windows, macOS, Linux)"
     )
@@ -356,10 +435,13 @@ def main() -> int:
     if args.self_test:
         return run_self_test()
 
+    if not _ensure_single_instance(minimized=args.minimized):
+        return 0
+
     app = CaptureApp()
     if args.show_settings or not args.minimized:
         app.event_queue.put(("open_settings", False))
-    app.start()
+    app.start(minimized=args.minimized)
     return 0
 
 

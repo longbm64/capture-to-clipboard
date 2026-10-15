@@ -126,36 +126,11 @@ def enhance_image_quality(
     image: Image.Image,
     upscale_hd: bool = True,
 ) -> Image.Image:
-    """Enhance screenshot clarity and sharpness (Retina-style Lanczos upscale + UnsharpMask)."""
-    img = image.convert("RGB")
-    w, h = img.size
-    max_dim = max(w, h)
-
-    if upscale_hd:
-        if max_dim <= 1400:
-            scale = 2.0
-        elif max_dim <= 2200:
-            scale = 1.5
-        else:
-            scale = 1.0
-
-        if scale > 1.0:
-            new_w = max(1, int(round(w * scale)))
-            new_h = max(1, int(round(h * scale)))
-            img = img.resize((new_w, new_h), Image.Resampling.LANCZOS)
-            img = img.filter(
-                ImageFilter.UnsharpMask(radius=1.15, percent=80, threshold=2)
-            )
-        else:
-            img = img.filter(
-                ImageFilter.UnsharpMask(radius=0.9, percent=55, threshold=2)
-            )
-    else:
-        img = img.filter(
-            ImageFilter.UnsharpMask(radius=0.75, percent=40, threshold=3)
-        )
-
-    return img
+    """Preserve 100% native 1:1 lossless pixel fidelity (ClearType subpixels & crisp 1px UI edges)."""
+    _ = upscale_hd
+    if image.mode not in ("RGB", "RGBA"):
+        return image.convert("RGBA")
+    return image.copy()
 
 
 def get_virtual_screen_geometry(root=None) -> Dict[str, int]:
@@ -284,20 +259,43 @@ def capture_virtual_screen(root=None) -> Tuple[Image.Image, Dict[str, int]]:
     )
 
 
+def _encode_lossless_png_bytes(image: Image.Image) -> bytes:
+    """Encode PIL Image as 100% lossless RGBA PNG with standard sRGB, gamma, and 96 DPI chunks."""
+    import struct
+    from PIL import PngImagePlugin
+
+    rgba_img = image.convert("RGBA")
+    png_info = PngImagePlugin.PngInfo()
+    png_info.add(b"sRGB", b"\x00")
+    png_info.add(b"gAMA", struct.pack(">I", 45455))
+
+    png_io = io.BytesIO()
+    rgba_img.save(
+        png_io,
+        format="PNG",
+        pnginfo=png_info,
+        dpi=(95.9866, 95.9866),
+        compress_level=1,
+    )
+    return png_io.getvalue()
+
+
 def _copy_image_windows(image: Image.Image) -> Tuple[bool, str]:
-    """Copy a PIL Image to the Windows clipboard in lossless PNG and high-DPI CF_DIB formats."""
+    """Copy a PIL Image to the Windows clipboard in lossless RGBA PNG and native 1:1 CF_DIB formats."""
     CF_DIB = 8
     GMEM_MOVEABLE = 0x0002
 
     rgb_img = image.convert("RGB")
-
     bmp_io = io.BytesIO()
-    rgb_img.save(bmp_io, format="BMP", dpi=(144, 144))
-    dib_bytes = bmp_io.getvalue()[14:]
+    rgb_img.save(bmp_io, format="BMP")
+    dib_arr = bytearray(bmp_io.getvalue()[14:])
+    # Set biXPelsPerMeter=0 and biYPelsPerMeter=0 (bytes 24..32) like Windows Snipping Tool
+    # so receiving apps never apply fractional DPI scaling.
+    if len(dib_arr) >= 32:
+        dib_arr[24:32] = b"\x00" * 8
+    dib_bytes = bytes(dib_arr)
 
-    png_io = io.BytesIO()
-    rgb_img.save(png_io, format="PNG", compress_level=1, dpi=(144, 144))
-    png_bytes = png_io.getvalue()
+    png_bytes = _encode_lossless_png_bytes(image)
 
     kernel32 = ctypes.windll.kernel32
     user32 = ctypes.windll.user32
@@ -374,7 +372,8 @@ def _copy_image_macos(image: Image.Image) -> Tuple[bool, str]:
     tmp_fd, tmp_path = tempfile.mkstemp(suffix=".png", prefix="clip_")
     os.close(tmp_fd)
     try:
-        image.save(tmp_path, format="PNG", compress_level=1, dpi=(144, 144))
+        with open(tmp_path, "wb") as f:
+            f.write(_encode_lossless_png_bytes(image))
         escaped_path = tmp_path.replace('"', '\\"')
         script = f'set the clipboard to (read (POSIX file "{escaped_path}") as «class PNGf»)'
         res = subprocess.run(
@@ -408,9 +407,7 @@ def _copy_image_macos(image: Image.Image) -> Tuple[bool, str]:
 
 def _copy_image_linux(image: Image.Image) -> Tuple[bool, str]:
     """Copy a PIL Image to the Linux clipboard (supports both Wayland wl-copy and X11 xclip)."""
-    png_io = io.BytesIO()
-    image.save(png_io, format="PNG", compress_level=1, dpi=(144, 144))
-    png_bytes = png_io.getvalue()
+    png_bytes = _encode_lossless_png_bytes(image)
 
     is_wayland = bool(os.environ.get("WAYLAND_DISPLAY"))
 

@@ -24,6 +24,7 @@ python -m PyInstaller --noconfirm --clean --noconsole --onefile ^
 
 echo.
 if exist "dist\CaptureToClipboard.exe" (
+    python -c "from app.autostart import sync_autostart_on_startup; sync_autostart_on_startup()" >nul 2>&1
     echo [OK] Build thanh cong: "%~dp0dist\CaptureToClipboard.exe"
 ) else (
     echo [ERROR] Build that bai!

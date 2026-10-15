@@ -201,12 +201,20 @@ def create_tray_icon_image(size: int = 64) -> Image.Image:
     return resized.copy()
 
 
+_CACHED_ICO_PATH: Optional[Path] = None
+
+
 def ensure_logo_assets() -> Path:
     """Save or locate `assets/logo.png` and `assets/logo.ico` for window icons and shortcuts."""
+    global _CACHED_ICO_PATH
+    if _CACHED_ICO_PATH is not None and _CACHED_ICO_PATH.exists():
+        return _CACHED_ICO_PATH
+
     from app.platform_utils import get_bundled_assets_dir, get_writable_data_dir
 
     bundled_ico = get_bundled_assets_dir() / "logo.ico"
-    if bundled_ico.exists() and getattr(import_sys := __import__("sys"), "frozen", False):
+    if bundled_ico.exists() and getattr(__import__("sys"), "frozen", False):
+        _CACHED_ICO_PATH = bundled_ico
         return bundled_ico
 
     assets_dir = get_writable_data_dir()
@@ -214,19 +222,21 @@ def ensure_logo_assets() -> Path:
     ico_path = assets_dir / "logo.ico"
     icns_path = assets_dir / "logo.icns"
 
-    logo_256 = create_tray_icon_image(256)
-    logo_256.save(png_path, format="PNG")
-    logo_256.save(
-        ico_path,
-        format="ICO",
-        bitmap_format="bmp",
-        sizes=[(16, 16), (24, 24), (32, 32), (48, 48), (64, 64), (128, 128), (256, 256)],
-    )
-    try:
-        logo_512 = create_tray_icon_image(512)
-        logo_512.save(icns_path, format="ICNS")
-    except Exception:
-        pass
+    if not ico_path.exists() or not png_path.exists():
+        logo_256 = create_tray_icon_image(256)
+        logo_256.save(png_path, format="PNG")
+        logo_256.save(
+            ico_path,
+            format="ICO",
+            bitmap_format="bmp",
+            sizes=[(16, 16), (24, 24), (32, 32), (48, 48), (64, 64), (128, 128), (256, 256)],
+        )
+        try:
+            logo_512 = create_tray_icon_image(512)
+            logo_512.save(icns_path, format="ICNS")
+        except Exception:
+            pass
+    _CACHED_ICO_PATH = ico_path
     return ico_path
 
 
@@ -241,10 +251,14 @@ def apply_window_icon(win) -> None:
 
     try:
         ico_path = ensure_logo_assets()
-        tk_icons = [
-            ImageTk.PhotoImage(create_tray_icon_image(sz))
-            for sz in (16, 24, 32, 48, 64, 128)
-        ]
+        root_widget = getattr(win, "master", None) or win
+        tk_icons = getattr(root_widget, "_cached_app_tk_icons", None)
+        if not tk_icons:
+            tk_icons = [
+                ImageTk.PhotoImage(create_tray_icon_image(sz))
+                for sz in (16, 24, 32, 48, 64, 128)
+            ]
+            root_widget._cached_app_tk_icons = tk_icons
         win._app_tk_icons = tk_icons  # keep reference alive
         win.iconphoto(True, *tk_icons)
     except Exception:
@@ -276,7 +290,6 @@ def apply_window_icon(win) -> None:
                         None, str(ico_path), IMAGE_ICON, lg_w, lg_h, LR_LOADFROMFILE
                     )
 
-                win.update_idletasks()
                 hwnd = user32.GetParent(win.winfo_id()) or win.winfo_id()
                 if hwnd:
                     if _WIN32_HICON_SM:
@@ -360,6 +373,31 @@ class SystemTrayController:
                 self.icon.update_menu()
             except Exception:
                 pass
+
+    def ensure_visible(self) -> None:
+        """Verify tray icon is registered with Windows Explorer (retries NIM_ADD if early boot NIM_ADD failed)."""
+        import sys
+
+        if sys.platform != "win32" or self.icon is None:
+            return
+        try:
+            hwnd = getattr(self.icon, "_hwnd", None)
+            icon_handle = getattr(self.icon, "_icon_handle", None)
+            if not hwnd or not icon_handle:
+                return
+            from pystray._util import win32
+
+            nid = win32.NOTIFYICONDATAW(
+                cbSize=__import__("ctypes").sizeof(win32.NOTIFYICONDATAW),
+                hWnd=hwnd,
+                hID=id(self.icon),
+                uFlags=win32.NIF_TIP,
+                szTip=self.icon.title,
+            )
+            if not win32.Shell_NotifyIcon(win32.NIM_MODIFY, nid):
+                self.icon._show()
+        except Exception:
+            pass
 
     def stop(self) -> None:
         if self.icon is not None:

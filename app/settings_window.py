@@ -10,7 +10,7 @@ Provides:
 from __future__ import annotations
 
 import tkinter as tk
-from typing import Callable, Optional
+from typing import Callable, Optional, Tuple
 
 from PIL import Image, ImageDraw, ImageTk
 
@@ -182,6 +182,10 @@ class SettingsAndGuideWindow:
         self.on_minimized_to_tray = on_minimized_to_tray
         self.win: Optional[tk.Toplevel] = None
         self._body_frame: Optional[tk.Frame] = None
+        self._table_grid: Optional[tk.Frame] = None
+        self._act_labels: list[tk.Label] = []
+        self._desc_labels: list[tk.Label] = []
+        self._last_table_w: int = -1
         self._closing = False
         self._checkbox: Optional[ModernCheckbox] = None
         self._status_lbl: Optional[tk.Label] = None
@@ -195,6 +199,7 @@ class SettingsAndGuideWindow:
         if self.win is not None:
             try:
                 if self.win.winfo_exists():
+                    self._closing = False
                     auto_val = is_autostart_enabled()
                     prtsc_val = is_prtsc_enabled()
                     if self._checkbox is not None:
@@ -206,13 +211,25 @@ class SettingsAndGuideWindow:
                     self.win.deiconify()
                     self.win.state("normal")
                     self.win.lift()
-                    self.win.focus_force()
+                    try:
+                        self.win.attributes("-alpha", 1.0)
+                        self.win.focus_force()
+                    except Exception:
+                        pass
                     return
             except Exception:
                 pass
             self.win = None
 
         self._build_window()
+
+    def is_visible(self) -> bool:
+        if self.win is None:
+            return False
+        try:
+            return bool(self.win.winfo_exists() and self.win.state() != "withdrawn")
+        except Exception:
+            return False
 
     def _build_window(self, preserve_pos: Optional[ tuple[int, int] ] = None) -> None:
         from app.i18n import APP_NAME
@@ -221,20 +238,21 @@ class SettingsAndGuideWindow:
         self._closing = False
         win = tk.Toplevel(self.root)
         self.win = win
+        win.withdraw()
+        try:
+            win.attributes("-alpha", 0.0)
+        except Exception:
+            pass
         win.title(APP_NAME)
         win.configure(bg=self.BG_MAIN)
         win.resizable(False, False)
-        apply_window_icon(win)
-        try:
-            win.attributes("-topmost", True)
-        except Exception:
-            pass
 
         self._populate_window_content(win)
 
         win.bind("<Escape>", lambda _e: self.minimize_to_tray())
+        win.bind("<Print>", lambda _e: self.on_trigger_ctrl1() if is_prtsc_enabled() else None)
+        win.bind("<KeyRelease-Print>", lambda _e: self.on_trigger_ctrl1() if is_prtsc_enabled() else None)
         win.protocol("WM_DELETE_WINDOW", self.minimize_to_tray)
-        win.bind("<Unmap>", self._on_window_unmap)
 
         win.update_idletasks()
         w = win.winfo_reqwidth()
@@ -247,11 +265,21 @@ class SettingsAndGuideWindow:
             x = max(16, (sw - w) // 2)
             y = max(16, (sh - h) // 2 - 20)
         win.geometry(f"{w}x{h}+{x}+{y}")
-        win.lift()
+        win.update_idletasks()
+        apply_window_icon(win)
         try:
-            win.focus_force()
+            win.attributes("-topmost", True)
         except Exception:
             pass
+        win.deiconify()
+        win.lift()
+        win.update_idletasks()
+        try:
+            win.attributes("-alpha", 1.0)
+            self.win.focus_force()
+        except Exception:
+            pass
+        win.bind("<Unmap>", self._on_window_unmap)
 
     def _populate_window_content(self, win: tk.Toplevel) -> None:
         from app.i18n import get_language, get_shortcuts_guide, tr
@@ -261,15 +289,18 @@ class SettingsAndGuideWindow:
                 self._body_frame.destroy()
             except Exception:
                 pass
+        self._act_labels.clear()
+        self._desc_labels.clear()
+        self._last_table_w = -1
 
         # ==================== MAIN BODY ====================
-        body = tk.Frame(win, bg=self.BG_MAIN, padx=22, pady=18)
+        body = tk.Frame(win, bg=self.BG_MAIN, padx=20, pady=14)
         body.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
         self._body_frame = body
 
         # --- Card 1: Settings (Auto-start, PrtSc key & Language) ---
         card_setting_border = tk.Frame(body, bg=self.BORDER_SOFT, padx=1, pady=1)
-        card_setting_border.pack(side=tk.TOP, fill=tk.X, pady=(0, 14))
+        card_setting_border.pack(side=tk.TOP, fill=tk.X, pady=(0, 12))
 
         card_setting = tk.Frame(card_setting_border, bg=self.BG_CARD, padx=16, pady=10)
         card_setting.pack(fill=tk.X)
@@ -405,14 +436,16 @@ class SettingsAndGuideWindow:
             bg=self.BG_MAIN,
             anchor=tk.W,
         )
-        guide_title.pack(side=tk.TOP, anchor=tk.W, pady=(2, 8))
+        guide_title.pack(side=tk.TOP, anchor=tk.W, pady=(2, 6))
 
         # Unified table grid: bg=BORDER_SOFT with 1px cell spacing creates crisp table gridlines
         table_grid = tk.Frame(body, bg=self.BORDER_SOFT)
         table_grid.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
+        self._table_grid = table_grid
         table_grid.grid_columnconfigure(0, weight=0)
         table_grid.grid_columnconfigure(1, weight=0)
         table_grid.grid_columnconfigure(2, weight=1)
+        table_grid.bind("<Configure>", self._on_table_configure)
 
         # Table Header Row
         hdr_bg = "#e2e8f0"
@@ -422,7 +455,7 @@ class SettingsAndGuideWindow:
             (tr("table_col_desc"), tk.W),
         ]
         for col_idx, (hdr_text, hdr_anchor) in enumerate(headers):
-            hdr_cell = tk.Frame(table_grid, bg=hdr_bg, padx=14, pady=8)
+            hdr_cell = tk.Frame(table_grid, bg=hdr_bg, padx=14, pady=7)
             hdr_cell.grid(
                 row=0,
                 column=col_idx,
@@ -447,10 +480,11 @@ class SettingsAndGuideWindow:
             action_title,
             desc_text,
         ) in enumerate(get_shortcuts_guide(), start=1):
+            table_grid.grid_rowconfigure(row_idx, weight=1)
             row_bg = self.BG_CARD if row_idx % 2 == 1 else self.BG_ROW_ALT
 
             # Column 0: Key badge cell (centered)
-            c0 = tk.Frame(table_grid, bg=row_bg, padx=12, pady=8)
+            c0 = tk.Frame(table_grid, bg=row_bg, padx=12, pady=6)
             c0.grid(row=row_idx, column=0, sticky="nsew", padx=(1, 1), pady=(0, 1))
 
             badge_outer = tk.Frame(c0, bg=key_fg, padx=1, pady=1)
@@ -469,7 +503,7 @@ class SettingsAndGuideWindow:
             key_lbl.pack()
 
             # Column 1: Feature name cell (left-aligned, vertically centered)
-            c1 = tk.Frame(table_grid, bg=row_bg, padx=14, pady=8)
+            c1 = tk.Frame(table_grid, bg=row_bg, padx=14, pady=6)
             c1.grid(row=row_idx, column=1, sticky="nsew", padx=(0, 1), pady=(0, 1))
 
             act_lbl = tk.Label(
@@ -482,9 +516,10 @@ class SettingsAndGuideWindow:
                 justify=tk.LEFT,
             )
             act_lbl.pack(fill=tk.X, expand=True)
+            self._act_labels.append(act_lbl)
 
             # Column 2: Description cell (left-aligned, vertically centered)
-            c2 = tk.Frame(table_grid, bg=row_bg, padx=14, pady=8)
+            c2 = tk.Frame(table_grid, bg=row_bg, padx=14, pady=6)
             c2.grid(row=row_idx, column=2, sticky="nsew", padx=(0, 1), pady=(0, 1))
 
             desc_lbl = tk.Label(
@@ -498,6 +533,25 @@ class SettingsAndGuideWindow:
                 wraplength=430,
             )
             desc_lbl.pack(fill=tk.X, expand=True)
+            self._desc_labels.append(desc_lbl)
+
+    def _on_table_configure(self, event: tk.Event) -> None:
+        if event.widget is not self._table_grid or event.width <= 100:
+            return
+        if abs(event.width - self._last_table_w) < 4:
+            return
+        self._last_table_w = event.width
+        try:
+            col0_bbox = self._table_grid.grid_bbox(0, 0)
+            col1_bbox = self._table_grid.grid_bbox(1, 0)
+            col0_w = col0_bbox[2] if col0_bbox else 148
+            col1_w = col1_bbox[2] if col1_bbox else 192
+            col2_w = max(240, event.width - col0_w - col1_w - 4)
+            desc_wrap = max(230, col2_w - 30)
+            for lbl in self._desc_labels:
+                lbl.configure(wraplength=desc_wrap)
+        except Exception:
+            pass
 
     @staticmethod
     def _update_status_label(lbl: Optional[tk.Label], enabled: bool) -> None:
@@ -570,22 +624,34 @@ class SettingsAndGuideWindow:
 
     def minimize_to_tray(self) -> None:
         """Close/hide the window to the System Tray when clicking X or -."""
-        was_open = self.win is not None
-        self.close()
+        was_open = False
+        if self.win is not None:
+            try:
+                was_open = bool(self.win.winfo_exists() and self.win.state() != "withdrawn")
+            except Exception:
+                was_open = False
+        self.close(destroy=False)
         if was_open and self.on_minimized_to_tray is not None:
             self.on_minimized_to_tray()
 
     def _trigger_1_from_window(self) -> None:
-        self.close()
+        self.close(destroy=False)
         self.on_trigger_ctrl1()
 
     def _trigger_2_from_window(self) -> None:
-        self.close()
+        self.close(destroy=False)
         self.on_trigger_ctrl2()
 
-    def close(self) -> None:
+    def close(self, destroy: bool = False) -> None:
         self._closing = True
         if self.win is not None:
+            if not destroy:
+                try:
+                    if self.win.winfo_exists():
+                        self.win.withdraw()
+                        return
+                except Exception:
+                    pass
             try:
                 self.win.destroy()
             except Exception:

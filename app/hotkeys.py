@@ -12,6 +12,25 @@ from typing import Callable, Optional, Set
 from pynput import keyboard
 
 
+class _KBDLLHOOKSTRUCT(ctypes.Structure):
+    _fields_ = [
+        ("vkCode", wintypes.DWORD),
+        ("scanCode", wintypes.DWORD),
+        ("flags", wintypes.DWORD),
+        ("time", wintypes.DWORD),
+        ("dwExtraInfo", ctypes.c_size_t),
+    ]
+
+
+_LRESULT = ctypes.c_ssize_t
+_HOOKPROC = ctypes.WINFUNCTYPE(
+    _LRESULT,
+    ctypes.c_int,
+    wintypes.WPARAM,
+    wintypes.LPARAM,
+)
+
+
 class GlobalHotkeyManager:
     """Listens globally for Ctrl+1, PrtSc (instant clipboard capture) and Ctrl+2 (capture & draw)."""
 
@@ -36,6 +55,8 @@ class GlobalHotkeyManager:
         self._win32_ctrl1_ok = False
         self._win32_ctrl2_ok = False
         self._win32_prtsc_ok = False
+        self._win32_ll_hook_ok = False
+        self._ll_hook_proc_ref: Optional[_HOOKPROC] = None
 
         self._listener: Optional[keyboard.Listener] = None
         self._ctrl_pressed = False
@@ -84,7 +105,11 @@ class GlobalHotkeyManager:
             self._win32_thread.start()
             ready_event.wait(timeout=1.5)
 
-            if not (self._win32_ctrl1_ok and self._win32_ctrl2_ok and (self._win32_prtsc_ok or not self.prtsc_enabled)):
+            if not (
+                self._win32_ctrl1_ok
+                and self._win32_ctrl2_ok
+                and (self._win32_ll_hook_ok or self._win32_prtsc_ok)
+            ):
                 self._start_pynput_listener()
         else:
             self._start_pynput_listener()
@@ -110,15 +135,51 @@ class GlobalHotkeyManager:
             self._listener = None
 
     def _run_win32_hotkey_loop(self, ready_event: threading.Event) -> None:
-        """Register Ctrl+1, Ctrl+2, and PrtSc via Win32 API and pump WM_HOTKEY messages."""
-        user32 = ctypes.windll.user32
-        kernel32 = ctypes.windll.kernel32
+        """Register Ctrl+1, Ctrl+2, PrtSc, and WH_KEYBOARD_LL hook via Win32 API."""
+        user32 = ctypes.WinDLL("user32", use_last_error=True)
+        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
         self._win32_thread_id = kernel32.GetCurrentThreadId()
+
+        kernel32.GetModuleHandleW.argtypes = [wintypes.LPCWSTR]
+        kernel32.GetModuleHandleW.restype = wintypes.HMODULE
+        user32.SetWindowsHookExW.argtypes = [
+            ctypes.c_int,
+            _HOOKPROC,
+            wintypes.HINSTANCE,
+            wintypes.DWORD,
+        ]
+        user32.SetWindowsHookExW.restype = wintypes.HHOOK
+        user32.CallNextHookEx.argtypes = [
+            wintypes.HHOOK,
+            ctypes.c_int,
+            wintypes.WPARAM,
+            wintypes.LPARAM,
+        ]
+        user32.CallNextHookEx.restype = _LRESULT
+        user32.UnhookWindowsHookEx.argtypes = [wintypes.HHOOK]
+        user32.UnhookWindowsHookEx.restype = wintypes.BOOL
+        user32.GetAsyncKeyState.argtypes = [ctypes.c_int]
+        user32.GetAsyncKeyState.restype = wintypes.SHORT
+        user32.SetTimer.argtypes = [
+            wintypes.HWND,
+            ctypes.c_size_t,
+            wintypes.UINT,
+            ctypes.c_void_p,
+        ]
+        user32.SetTimer.restype = ctypes.c_size_t
+        user32.KillTimer.argtypes = [wintypes.HWND, ctypes.c_size_t]
+        user32.KillTimer.restype = wintypes.BOOL
 
         MOD_CONTROL = 0x0002
         MOD_NOREPEAT = 0x4000
         WM_HOTKEY = 0x0312
+        WM_TIMER = 0x0113
         VK_SNAPSHOT = 0x2C
+        WH_KEYBOARD_LL = 13
+        WM_KEYDOWN = 0x0100
+        WM_KEYUP = 0x0101
+        WM_SYSKEYDOWN = 0x0104
+        WM_SYSKEYUP = 0x0105
 
         self._win32_ctrl1_ok = bool(
             user32.RegisterHotKey(None, 1, MOD_CONTROL | MOD_NOREPEAT, 0x31)
@@ -129,12 +190,74 @@ class GlobalHotkeyManager:
         user32.RegisterHotKey(None, 3, MOD_CONTROL | MOD_NOREPEAT, 0x61)
         user32.RegisterHotKey(None, 4, MOD_CONTROL | MOD_NOREPEAT, 0x62)
 
-        if self.prtsc_enabled:
-            self._win32_prtsc_ok = bool(
+        def _register_prtsc_hotkeys() -> bool:
+            ok_norepeat = bool(
                 user32.RegisterHotKey(None, 5, MOD_NOREPEAT, VK_SNAPSHOT)
             )
+            ok_plain = bool(
+                user32.RegisterHotKey(None, 6, 0, VK_SNAPSHOT)
+            )
+            return ok_norepeat or ok_plain
+
+        def _unregister_prtsc_hotkeys() -> None:
+            for hk_id in (5, 6):
+                try:
+                    user32.UnregisterHotKey(None, hk_id)
+                except Exception:
+                    pass
+
+        if self.prtsc_enabled:
+            self._win32_prtsc_ok = _register_prtsc_hotkeys()
         else:
             self._win32_prtsc_ok = False
+
+        hook_handle: Optional[int] = None
+
+        def _ll_keyboard_callback(
+            n_code: int, w_param: int, l_param: int
+        ) -> int:
+            if n_code >= 0 and l_param:
+                try:
+                    kb = _KBDLLHOOKSTRUCT.from_address(l_param)
+                    vk = kb.vkCode
+                    scan = kb.scanCode
+                    flags = kb.flags
+                    is_prtsc = (vk == VK_SNAPSHOT) or (
+                        scan == 0x37 and bool(flags & 0x01)
+                    )
+                    if is_prtsc and self.prtsc_enabled:
+                        win_down = bool(
+                            (user32.GetAsyncKeyState(0x5B) & 0x8000)
+                            or (user32.GetAsyncKeyState(0x5C) & 0x8000)
+                        )
+                        alt_down = bool(user32.GetAsyncKeyState(0x12) & 0x8000)
+                        if not win_down and not alt_down:
+                            if w_param in (
+                                WM_KEYDOWN,
+                                WM_SYSKEYDOWN,
+                                WM_KEYUP,
+                                WM_SYSKEYUP,
+                            ):
+                                self._trigger(1)
+                                return 1
+                except Exception:
+                    pass
+            return user32.CallNextHookEx(hook_handle, n_code, w_param, l_param)
+
+        self._ll_hook_proc_ref = _HOOKPROC(_ll_keyboard_callback)
+        hmod = kernel32.GetModuleHandleW(None)
+        hook_handle = user32.SetWindowsHookExW(
+            WH_KEYBOARD_LL,
+            self._ll_hook_proc_ref,
+            hmod,
+            0,
+        )
+        self._win32_ll_hook_ok = bool(hook_handle)
+
+        # Clear any stale async state bit for VK_SNAPSHOT and start a 25ms fallback timer
+        user32.GetAsyncKeyState(VK_SNAPSHOT)
+        prev_prtsc_down = False
+        timer_id = user32.SetTimer(None, 0, 25, None)
 
         ready_event.set()
 
@@ -148,26 +271,50 @@ class GlobalHotkeyManager:
                     hotkey_id = int(msg.wParam)
                     if hotkey_id in (1, 3):
                         self._trigger(1)
-                    elif hotkey_id == 5 and self.prtsc_enabled:
+                    elif hotkey_id in (5, 6) and self.prtsc_enabled:
                         self._trigger(1)
                     elif hotkey_id in (2, 4):
                         self._trigger(2)
+                elif msg.message == WM_TIMER:
+                    if self.prtsc_enabled:
+                        state = user32.GetAsyncKeyState(VK_SNAPSHOT)
+                        is_down = bool(state & 0x8000)
+                        was_pressed = bool(state & 0x0001)
+                        if (is_down or was_pressed) and not prev_prtsc_down:
+                            win_down = bool(
+                                (user32.GetAsyncKeyState(0x5B) & 0x8000)
+                                or (user32.GetAsyncKeyState(0x5C) & 0x8000)
+                            )
+                            alt_down = bool(user32.GetAsyncKeyState(0x12) & 0x8000)
+                            if not win_down and not alt_down:
+                                self._trigger(1)
+                        prev_prtsc_down = is_down
+                    else:
+                        prev_prtsc_down = False
                 elif msg.message == self.WM_TOGGLE_PRTSC:
                     want_enable = bool(msg.wParam)
+                    user32.GetAsyncKeyState(VK_SNAPSHOT)
+                    prev_prtsc_down = False
                     if want_enable and not self._win32_prtsc_ok:
-                        self._win32_prtsc_ok = bool(
-                            user32.RegisterHotKey(None, 5, MOD_NOREPEAT, VK_SNAPSHOT)
-                        )
+                        self._win32_prtsc_ok = _register_prtsc_hotkeys()
                     elif not want_enable and self._win32_prtsc_ok:
-                        try:
-                            user32.UnregisterHotKey(None, 5)
-                        except Exception:
-                            pass
+                        _unregister_prtsc_hotkeys()
                         self._win32_prtsc_ok = False
                 user32.TranslateMessage(ctypes.byref(msg))
                 user32.DispatchMessageW(ctypes.byref(msg))
         finally:
-            for hk_id in (1, 2, 3, 4, 5):
+            if timer_id:
+                try:
+                    user32.KillTimer(None, timer_id)
+                except Exception:
+                    pass
+            if hook_handle:
+                try:
+                    user32.UnhookWindowsHookEx(hook_handle)
+                except Exception:
+                    pass
+            self._win32_ll_hook_ok = False
+            for hk_id in (1, 2, 3, 4, 5, 6):
                 try:
                     user32.UnregisterHotKey(None, hk_id)
                 except Exception:
@@ -254,7 +401,11 @@ class GlobalHotkeyManager:
             self._shift_pressed = True
             return
 
-        if self.prtsc_enabled and self._is_prtsc_key(key) and not self._win32_prtsc_ok:
+        if (
+            self.prtsc_enabled
+            and self._is_prtsc_key(key)
+            and not (self._win32_ll_hook_ok or self._win32_prtsc_ok)
+        ):
             self._trigger(1)
             return
 
@@ -278,6 +429,14 @@ class GlobalHotkeyManager:
             return
         if self._is_shift_key(key):
             self._shift_pressed = False
+            return
+
+        if (
+            self.prtsc_enabled
+            and self._is_prtsc_key(key)
+            and not (self._win32_ll_hook_ok or self._win32_prtsc_ok)
+        ):
+            self._trigger(1)
             return
 
         digit = self._detect_digit_1_or_2(key)

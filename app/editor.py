@@ -16,6 +16,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import datetime
 import math
+from pathlib import Path
 import tkinter as tk
 from tkinter import colorchooser, filedialog
 from typing import Callable, Dict, List, Optional, Tuple
@@ -577,7 +578,7 @@ class ModernPillButton(tk.Label):
         self,
         parent: tk.Widget,
         text: str,
-        icon_name: str,
+        icon_name: Optional[str],
         command: Callable[[], None],
         parent_bg: str = "#e8eef5",
         bg_normal: str = "#ffffff",
@@ -591,6 +592,7 @@ class ModernPillButton(tk.Label):
         border_hover: Optional[str] = "#94a3b8",
         font_pt: int = 12,
         height_pt: int = 31,
+        pad_x_pt: float = 14.0,
         corner_radius_pt: float = 5.5,
     ) -> None:
         super().__init__(parent, bg=parent_bg, bd=0, highlightthickness=0, cursor="hand2")
@@ -612,11 +614,17 @@ class ModernPillButton(tk.Label):
         self.corner_radius_pt = corner_radius_pt
 
         self.dpi_scale = _get_dpi_scale(parent)
-        self.font_px = max(14, int(round(font_pt * self.dpi_scale)))
-        self.icon_px = max(16, int(round((font_pt + 2) * self.dpi_scale)))
-        self.btn_h = max(36, int(round(height_pt * self.dpi_scale)))
-        self.pad_x = max(15, int(round(14 * self.dpi_scale)))
-        self.gap_px = max(8, int(round(7.5 * self.dpi_scale)))
+        self.font_px = max(12, int(round(font_pt * self.dpi_scale)))
+        self.icon_px = (
+            max(16, int(round((font_pt + 2) * self.dpi_scale)))
+            if self.icon_name
+            else 0
+        )
+        self.btn_h = max(28, int(round(height_pt * self.dpi_scale)))
+        self.pad_x = max(10, int(round(pad_x_pt * self.dpi_scale)))
+        self.gap_px = (
+            max(8, int(round(7.5 * self.dpi_scale))) if self.icon_name else 0
+        )
 
         ss = 3
         ss_font = _load_ui_font(self.font_px * ss, bold=True)
@@ -679,9 +687,10 @@ class ModernPillButton(tk.Label):
         total_content_w = icon_size + gap + text_w
         start_x = (W - total_content_w) // 2
 
-        icon_cx = start_x + (icon_size // 2)
-        icon_cy = H // 2
-        _draw_tool_vector_icon(draw, self.icon_name, icon_cx, icon_cy, icon_size, fg_rgba)
+        if self.icon_name:
+            icon_cx = start_x + (icon_size // 2)
+            icon_cy = H // 2
+            _draw_tool_vector_icon(draw, self.icon_name, icon_cx, icon_cy, icon_size, fg_rgba)
 
         ref_bbox = draw.textbbox((0, 0), "ÁgĐy", font=font)
         ref_h = ref_bbox[3] - ref_bbox[1]
@@ -896,6 +905,253 @@ class SizeDotButton(tk.Label):
         self.configure(image=self._img_active if active else self._img_normal)
 
 
+class ResponsiveFlowBar(tk.Frame):
+    """Responsive toolbar frame that centers items and wraps groups/buttons onto new rows when resized."""
+
+    def __init__(
+        self,
+        parent: tk.Widget,
+        bg: str,
+        pad_x: int = 14,
+        pad_y: int = 8,
+        row_gap: int = 6,
+    ) -> None:
+        super().__init__(parent, bg=bg, highlightthickness=0, bd=0)
+        self.bg_color = bg
+        self.pad_x = pad_x
+        self.pad_y = pad_y
+        self.row_gap = row_gap
+        self._entries: List[dict] = []
+        self._last_width: int = -1
+        self.pack_propagate(False)
+        self.bind("<Configure>", self._on_configure)
+
+    def add_widget(
+        self,
+        widget: tk.Widget,
+        gap_x: int = 8,
+        keep_with_next: bool = False,
+        glue_next: bool = False,
+    ) -> None:
+        self._entries.append(
+            {
+                "type": "widget",
+                "widget": widget,
+                "gap_x": gap_x,
+                "keep_with_next": keep_with_next,
+                "glue_next": glue_next,
+            }
+        )
+
+    def add_divider(
+        self,
+        bg: str = "#cbd5e1",
+        height: int = 28,
+        gap_x: int = 20,
+    ) -> tk.Frame:
+        div = tk.Frame(self, bg=bg, width=1, height=height)
+        self._entries.append(
+            {
+                "type": "divider",
+                "widget": div,
+                "gap_x": gap_x,
+                "keep_with_next": False,
+                "glue_next": False,
+            }
+        )
+        return div
+
+    def _measure_entries(self) -> None:
+        for entry in self._entries:
+            w_obj = entry["widget"]
+            if entry["type"] == "divider":
+                entry["w"] = 1
+                entry["h"] = int(w_obj.cget("height") or 28)
+            else:
+                req_w = w_obj.winfo_reqwidth()
+                req_h = w_obj.winfo_reqheight()
+                if req_w <= 1 or req_h <= 1:
+                    w_obj.update_idletasks()
+                    req_w = w_obj.winfo_reqwidth()
+                    req_h = w_obj.winfo_reqheight()
+                entry["w"] = req_w
+                entry["h"] = req_h
+
+    def get_single_row_width(self) -> int:
+        self._measure_entries()
+        if not self._entries:
+            return self.pad_x * 2
+        total = self.pad_x * 2
+        for i, entry in enumerate(self._entries):
+            total += entry["w"]
+            if i < len(self._entries) - 1:
+                total += entry["gap_x"]
+        return total
+
+    def _build_units(self, avail_w: int) -> List[dict]:
+        raw_groups: List[List[dict]] = []
+        cur: List[dict] = []
+        for entry in self._entries:
+            if entry["type"] == "divider":
+                if cur:
+                    raw_groups.append(cur)
+                    cur = []
+                raw_groups.append([entry])
+            else:
+                cur.append(entry)
+                if not entry.get("keep_with_next", False):
+                    raw_groups.append(cur)
+                    cur = []
+        if cur:
+            raw_groups.append(cur)
+
+        final_units: List[dict] = []
+        for grp in raw_groups:
+            if len(grp) == 1 and grp[0]["type"] == "divider":
+                final_units.append(
+                    {
+                        "type": "divider",
+                        "items": grp,
+                        "w": grp[0]["w"],
+                        "gap_x": grp[0]["gap_x"],
+                    }
+                )
+                continue
+
+            grp_w = sum(it["w"] for it in grp) + sum(it["gap_x"] for it in grp[:-1])
+            if grp_w <= avail_w or len(grp) == 1:
+                final_units.append(
+                    {
+                        "type": "unit",
+                        "items": grp,
+                        "w": grp_w,
+                        "gap_x": grp[-1]["gap_x"],
+                    }
+                )
+            else:
+                sub: List[dict] = []
+                for it in grp:
+                    sub.append(it)
+                    if not it.get("glue_next", False):
+                        sub_w = sum(x["w"] for x in sub) + sum(
+                            x["gap_x"] for x in sub[:-1]
+                        )
+                        final_units.append(
+                            {
+                                "type": "unit",
+                                "items": sub,
+                                "w": sub_w,
+                                "gap_x": sub[-1]["gap_x"],
+                            }
+                        )
+                        sub = []
+                if sub:
+                    sub_w = sum(x["w"] for x in sub) + sum(
+                        x["gap_x"] for x in sub[:-1]
+                    )
+                    final_units.append(
+                        {
+                            "type": "unit",
+                            "items": sub,
+                            "w": sub_w,
+                            "gap_x": sub[-1]["gap_x"],
+                        }
+                    )
+        return final_units
+
+    def _compute_lines(self, avail_w: int) -> Tuple[List[List[dict]], List[tk.Widget]]:
+        units = self._build_units(avail_w)
+        lines: List[List[dict]] = []
+        cur_line: List[dict] = []
+        cur_w = 0
+        hidden_dividers: List[tk.Widget] = []
+
+        for u in units:
+            if u["type"] == "divider":
+                if not cur_line or cur_line[-1]["type"] == "divider":
+                    hidden_dividers.append(u["items"][0]["widget"])
+                else:
+                    cur_line.append(u)
+                    cur_w += cur_line[-2]["gap_x"] + u["w"]
+                continue
+
+            if not cur_line:
+                cur_line.append(u)
+                cur_w = u["w"]
+            else:
+                prev_gap = cur_line[-1]["gap_x"]
+                if cur_w + prev_gap + u["w"] <= avail_w:
+                    cur_line.append(u)
+                    cur_w += prev_gap + u["w"]
+                else:
+                    if cur_line[-1]["type"] == "divider":
+                        div_u = cur_line.pop()
+                        hidden_dividers.append(div_u["items"][0]["widget"])
+                    if cur_line:
+                        lines.append(cur_line)
+                    cur_line = [u]
+                    cur_w = u["w"]
+
+        if cur_line and cur_line[-1]["type"] == "divider":
+            div_u = cur_line.pop()
+            hidden_dividers.append(div_u["items"][0]["widget"])
+        if cur_line:
+            lines.append(cur_line)
+
+        return lines, hidden_dividers
+
+    def compute_height_for_width(self, total_width: int) -> int:
+        self._measure_entries()
+        avail_w = max(200, total_width - self.pad_x * 2)
+        lines, _ = self._compute_lines(avail_w)
+        cur_y = self.pad_y
+        for line in lines:
+            flat_items = [it for u in line for it in u["items"]]
+            if flat_items:
+                line_h = max(it["h"] for it in flat_items)
+                cur_y += line_h + self.row_gap
+        return max(36, cur_y - (self.row_gap if lines else 0) + self.pad_y)
+
+    def relayout(self, total_width: int) -> int:
+        self._measure_entries()
+        avail_w = max(200, total_width - self.pad_x * 2)
+        lines, hidden_dividers = self._compute_lines(avail_w)
+
+        for div_w in hidden_dividers:
+            div_w.place_forget()
+
+        cur_y = self.pad_y
+        for line in lines:
+            flat_items: List[dict] = []
+            for u in line:
+                flat_items.extend(u["items"])
+            if not flat_items:
+                continue
+            line_w = sum(it["w"] for it in flat_items) + sum(
+                it["gap_x"] for it in flat_items[:-1]
+            )
+            line_h = max(it["h"] for it in flat_items)
+            cur_x = self.pad_x + max(0, (avail_w - line_w) // 2)
+            for idx, it in enumerate(flat_items):
+                w_obj = it["widget"]
+                iy = cur_y + (line_h - it["h"]) // 2
+                w_obj.place(x=cur_x, y=iy, width=it["w"], height=it["h"])
+                cur_x += it["w"] + (it["gap_x"] if idx < len(flat_items) - 1 else 0)
+            cur_y += line_h + self.row_gap
+
+        total_h = max(36, cur_y - (self.row_gap if lines else 0) + self.pad_y)
+        if int(self.cget("height") or 0) != total_h:
+            self.configure(height=total_h)
+        self._last_width = total_width
+        return total_h
+
+    def _on_configure(self, event: tk.Event) -> None:
+        if event.widget is not self:
+            return
+        if event.width > 1 and abs(event.width - self._last_width) >= 2:
+            self.relayout(event.width)
+
+
 class AnnotationEditor:
     """Interactive window for drawing, selecting, and moving annotations on a screenshot."""
 
@@ -963,18 +1219,22 @@ class AnnotationEditor:
         max_canvas_w = max(560, int(screen_w * 0.86))
         max_canvas_h = max(380, int(screen_h * 0.72))
 
-        target_w, target_h = (
+        self.target_w, self.target_h = (
             logical_size
             if logical_size is not None
             else (self.base_image.width, self.base_image.height)
         )
         fit_scale = min(
             1.0,
-            max_canvas_w / max(1, target_w),
-            max_canvas_h / max(1, target_h),
+            max_canvas_w / max(1, self.target_w),
+            max_canvas_h / max(1, self.target_h),
         )
-        self.canvas_w = max(1, int(round(target_w * fit_scale)))
-        self.canvas_h = max(1, int(round(target_h * fit_scale)))
+        self.canvas_w = max(1, int(round(self.target_w * fit_scale)))
+        self.canvas_h = max(1, int(round(self.target_h * fit_scale)))
+        self._initial_canvas_w = self.canvas_w
+        self._initial_canvas_h = self.canvas_h
+        self._resize_hq_after_id: Optional[str] = None
+        self._window_ready = False
 
         self.display_scale_x = self.canvas_w / max(1, self.base_image.width)
         self.display_scale_y = self.canvas_h / max(1, self.base_image.height)
@@ -998,7 +1258,6 @@ class AnnotationEditor:
         self._size_buttons: Dict[int, SizeDotButton] = {}
 
         self._build_window()
-        self._rebuild_composite_and_refresh(high_quality=True)
 
     @property
     def working_image(self) -> Image.Image:
@@ -1029,27 +1288,24 @@ class AnnotationEditor:
         from app.tray import apply_window_icon
 
         self.win = tk.Toplevel(self.root)
-        self.win.title(APP_NAME)
-        self.win.configure(bg=self.CANVAS_AREA_BG)
-        apply_window_icon(self.win)
+        self.win.withdraw()
         try:
-            self.win.attributes("-topmost", True)
+            self.win.attributes("-alpha", 0.0)
         except Exception:
             pass
+        self.win.title(APP_NAME)
+        self.win.configure(bg=self.CANVAS_AREA_BG)
+        self.win.resizable(True, True)
 
-        # ==================== TOP TOOLBAR ROW 1 (CENTERED): DRAWING TOOLS & HISTORY ====================
-        top_bar_outer = tk.Frame(self.win, bg=self.TOOLBAR_ROW1_BG, padx=16, pady=10)
-        top_bar_outer.pack(side=tk.TOP, fill=tk.X)
-
-        top_bar = tk.Frame(top_bar_outer, bg=self.TOOLBAR_ROW1_BG)
-        top_bar.pack(anchor=tk.CENTER)
-
-        tools_frame = tk.Frame(top_bar, bg=self.TOOLBAR_ROW1_BG)
-        tools_frame.pack(side=tk.LEFT)
+        # ==================== TOP TOOLBAR ROW 1 (RESPONSIVE FLOW): DRAWING TOOLS & HISTORY ====================
+        self.top_bar_flow = ResponsiveFlowBar(
+            self.win, bg=self.TOOLBAR_ROW1_BG, pad_x=16, pad_y=8, row_gap=6
+        )
+        self.top_bar_flow.pack(side=tk.TOP, fill=tk.X)
 
         for tool_id, label in get_editor_tools():
             btn = ModernPillButton(
-                tools_frame,
+                self.top_bar_flow,
                 text=label,
                 icon_name=tool_id,
                 parent_bg=self.TOOLBAR_ROW1_BG,
@@ -1066,18 +1322,13 @@ class AnnotationEditor:
                 height_pt=32,
                 command=lambda t=tool_id: self._select_tool(t),
             )
-            btn.pack(side=tk.LEFT, padx=4)
+            self.top_bar_flow.add_widget(btn, gap_x=8)
             self._tool_buttons[tool_id] = btn
 
-        tk.Frame(top_bar, bg="#cbd5e1", width=1, height=30).pack(
-            side=tk.LEFT, padx=14, fill=tk.Y
-        )
-
-        hist_frame = tk.Frame(top_bar, bg=self.TOOLBAR_ROW1_BG)
-        hist_frame.pack(side=tk.LEFT)
+        self.top_bar_flow.add_divider(bg="#cbd5e1", height=28, gap_x=14)
 
         self.btn_undo = ModernPillButton(
-            hist_frame,
+            self.top_bar_flow,
             text=tr("editor_undo"),
             icon_name="undo",
             parent_bg=self.TOOLBAR_ROW1_BG,
@@ -1091,10 +1342,10 @@ class AnnotationEditor:
             height_pt=32,
             command=self.undo,
         )
-        self.btn_undo.pack(side=tk.LEFT, padx=4)
+        self.top_bar_flow.add_widget(self.btn_undo, gap_x=6)
 
         self.btn_redo = ModernPillButton(
-            hist_frame,
+            self.top_bar_flow,
             text=tr("editor_redo"),
             icon_name="redo",
             parent_bg=self.TOOLBAR_ROW1_BG,
@@ -1108,10 +1359,10 @@ class AnnotationEditor:
             height_pt=32,
             command=self.redo,
         )
-        self.btn_redo.pack(side=tk.LEFT, padx=4)
+        self.top_bar_flow.add_widget(self.btn_redo, gap_x=6)
 
         self.btn_clear = ModernPillButton(
-            hist_frame,
+            self.top_bar_flow,
             text=tr("editor_clear"),
             icon_name="clear",
             parent_bg=self.TOOLBAR_ROW1_BG,
@@ -1125,40 +1376,41 @@ class AnnotationEditor:
             height_pt=32,
             command=self.clear_all,
         )
-        self.btn_clear.pack(side=tk.LEFT, padx=4)
+        self.top_bar_flow.add_widget(self.btn_clear, gap_x=6)
 
         # Subtle divider line between Row 1 and Row 2
         tk.Frame(self.win, bg="#cbd5e1", height=1).pack(side=tk.TOP, fill=tk.X)
 
-        # ==================== TOP TOOLBAR ROW 2 (CENTERED): COLORS, STROKE SIZE & EXPORT ====================
-        sub_bar_outer = tk.Frame(self.win, bg=self.TOOLBAR_ROW2_BG, padx=16, pady=10)
-        sub_bar_outer.pack(side=tk.TOP, fill=tk.X)
-
-        sub_bar = tk.Frame(sub_bar_outer, bg=self.TOOLBAR_ROW2_BG)
-        sub_bar.pack(anchor=tk.CENTER)
+        # ==================== TOP TOOLBAR ROW 2 (RESPONSIVE FLOW): COLORS, STROKE SIZE & EXPORT ====================
+        self.sub_bar_flow = ResponsiveFlowBar(
+            self.win, bg=self.TOOLBAR_ROW2_BG, pad_x=14, pad_y=8, row_gap=6
+        )
+        self.sub_bar_flow.pack(side=tk.TOP, fill=tk.X)
 
         color_label = tk.Label(
-            sub_bar,
+            self.sub_bar_flow,
             text=tr("editor_color_label"),
             font=("Roboto", 10, "bold"),
             fg="#1e293b",
             bg=self.TOOLBAR_ROW2_BG,
         )
-        color_label.pack(side=tk.LEFT, padx=(0, 8))
+        self.sub_bar_flow.add_widget(
+            color_label, gap_x=6, keep_with_next=True, glue_next=True
+        )
 
         for hex_code, _name in self.COLORS:
             c_btn = ColorSwatchButton(
-                sub_bar,
+                self.sub_bar_flow,
                 hex_color=hex_code,
                 base_size=24,
                 parent_bg=self.TOOLBAR_ROW2_BG,
                 command=lambda c=hex_code: self._select_color(c),
             )
-            c_btn.pack(side=tk.LEFT, padx=3)
+            self.sub_bar_flow.add_widget(c_btn, gap_x=5)
             self._color_buttons[hex_code] = c_btn
 
         custom_color_btn = ModernPillButton(
-            sub_bar,
+            self.sub_bar_flow,
             text=tr("editor_custom_color"),
             icon_name="palette",
             parent_bg=self.TOOLBAR_ROW2_BG,
@@ -1172,42 +1424,42 @@ class AnnotationEditor:
             height_pt=30,
             command=self._pick_custom_color,
         )
-        custom_color_btn.pack(side=tk.LEFT, padx=(8, 12))
+        self.sub_bar_flow.add_widget(custom_color_btn, gap_x=12)
 
-        tk.Frame(sub_bar, bg="#cbd5e1", width=1, height=28).pack(
-            side=tk.LEFT, padx=10, fill=tk.Y
-        )
+        self.sub_bar_flow.add_divider(bg="#cbd5e1", height=26, gap_x=12)
 
         size_label = tk.Label(
-            sub_bar,
+            self.sub_bar_flow,
             text=tr("editor_size_label"),
             font=("Roboto", 10, "bold"),
             fg="#1e293b",
             bg=self.TOOLBAR_ROW2_BG,
         )
-        size_label.pack(side=tk.LEFT, padx=(2, 8))
+        self.sub_bar_flow.add_widget(
+            size_label, gap_x=6, keep_with_next=True, glue_next=True
+        )
 
-        for sz_val, sz_name, dot_r in get_editor_sizes():
+        editor_sizes = get_editor_sizes()
+        for idx_sz, (sz_val, sz_name, dot_r) in enumerate(editor_sizes):
             s_btn = SizeDotButton(
-                sub_bar,
+                self.sub_bar_flow,
                 size_val=sz_val,
                 label_text=sz_name,
                 dot_radius_pt=dot_r,
                 parent_bg=self.TOOLBAR_ROW2_BG,
                 command=lambda s=sz_val: self._select_size(s),
             )
-            s_btn.pack(side=tk.LEFT, padx=3)
+            is_last_sz = idx_sz == len(editor_sizes) - 1
+            self.sub_bar_flow.add_widget(
+                s_btn,
+                gap_x=12 if is_last_sz else 5,
+            )
             self._size_buttons[sz_val] = s_btn
 
-        tk.Frame(sub_bar, bg="#cbd5e1", width=1, height=28).pack(
-            side=tk.LEFT, padx=12, fill=tk.Y
-        )
-
-        action_frame = tk.Frame(sub_bar, bg=self.TOOLBAR_ROW2_BG)
-        action_frame.pack(side=tk.LEFT)
+        self.sub_bar_flow.add_divider(bg="#cbd5e1", height=26, gap_x=12)
 
         btn_copy = ModernPillButton(
-            action_frame,
+            self.sub_bar_flow,
             text=tr("editor_copy_btn"),
             icon_name="copy",
             parent_bg=self.TOOLBAR_ROW2_BG,
@@ -1221,10 +1473,10 @@ class AnnotationEditor:
             height_pt=30,
             command=self.copy_and_finish,
         )
-        btn_copy.pack(side=tk.LEFT, padx=4)
+        self.sub_bar_flow.add_widget(btn_copy, gap_x=6)
 
         btn_save = ModernPillButton(
-            action_frame,
+            self.sub_bar_flow,
             text=tr("editor_save_btn"),
             icon_name="save",
             parent_bg=self.TOOLBAR_ROW2_BG,
@@ -1238,10 +1490,10 @@ class AnnotationEditor:
             height_pt=30,
             command=self.save_to_file,
         )
-        btn_save.pack(side=tk.LEFT, padx=4)
+        self.sub_bar_flow.add_widget(btn_save, gap_x=6)
 
         btn_close = ModernPillButton(
-            action_frame,
+            self.sub_bar_flow,
             text=tr("editor_close_btn"),
             icon_name="close",
             parent_bg=self.TOOLBAR_ROW2_BG,
@@ -1255,32 +1507,14 @@ class AnnotationEditor:
             height_pt=30,
             command=self.close_editor,
         )
-        btn_close.pack(side=tk.LEFT, padx=4)
+        self.sub_bar_flow.add_widget(btn_close, gap_x=6)
 
         # Soft slate divider separating menu bar from canvas area
         tk.Frame(self.win, bg=self.TOOLBAR_BORDER, height=1).pack(
             side=tk.TOP, fill=tk.X
         )
 
-        # ==================== IMAGE CANVAS AREA ====================
-        canvas_container = tk.Frame(self.win, bg=self.CANVAS_AREA_BG, padx=16, pady=12)
-        canvas_container.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
-
-        canvas_border = tk.Frame(canvas_container, bg="#64748b", padx=1, pady=1)
-        canvas_border.pack(expand=True)
-
-        self.canvas = tk.Canvas(
-            canvas_border,
-            width=self.canvas_w,
-            height=self.canvas_h,
-            bg="#f8fafc",
-            highlightthickness=0,
-            bd=0,
-            cursor="crosshair",
-        )
-        self.canvas.pack()
-        self._canvas_img_id = self.canvas.create_image(0, 0, anchor=tk.NW)
-
+        # ==================== BOTTOM STATUS BAR (PACKED BEFORE CANVAS SO IT NEVER CLIPS) ====================
         status_text = tr(
             "editor_status_bar",
             w=self.base_image.width,
@@ -1298,6 +1532,31 @@ class AnnotationEditor:
         )
         status_bar.pack(side=tk.BOTTOM, fill=tk.X)
 
+        # ==================== IMAGE CANVAS AREA ====================
+        self.canvas_container = tk.Frame(
+            self.win,
+            bg=self.CANVAS_AREA_BG,
+            width=self.canvas_w + 36,
+            height=self.canvas_h + 28,
+        )
+        self.canvas_container.pack_propagate(False)
+        self.canvas_container.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
+
+        canvas_border = tk.Frame(self.canvas_container, bg="#64748b", padx=1, pady=1)
+        canvas_border.pack(expand=True)
+
+        self.canvas = tk.Canvas(
+            canvas_border,
+            width=self.canvas_w,
+            height=self.canvas_h,
+            bg="#f8fafc",
+            highlightthickness=0,
+            bd=0,
+            cursor="crosshair",
+        )
+        self.canvas.pack()
+        self._canvas_img_id = self.canvas.create_image(0, 0, anchor=tk.NW)
+
         self._select_tool("arrow")
         self._select_color("#ef4444")
         self._select_size(5)
@@ -1308,6 +1567,7 @@ class AnnotationEditor:
         self.canvas.bind("<B1-Motion>", self._on_mouse_drag)
         self.canvas.bind("<ButtonRelease-1>", self._on_mouse_up)
         self.canvas.bind("<Double-Button-1>", self._on_double_click)
+        self.canvas_container.bind("<Configure>", self._on_canvas_container_configure)
 
         self.win.bind("<Control-z>", lambda _e: self.undo())
         self.win.bind("<Control-Z>", lambda _e: self.undo())
@@ -1322,17 +1582,115 @@ class AnnotationEditor:
         self.win.bind("<Return>", self._on_enter_key)
         self.win.bind("<Escape>", self._on_escape_key)
         self.win.protocol("WM_DELETE_WINDOW", self.close_editor)
-        self.win.bind("<Unmap>", self._on_window_unmap)
+
+        self._rebuild_composite_and_refresh(high_quality=True)
 
         self.win.update_idletasks()
-        win_w = self.win.winfo_reqwidth()
-        win_h = self.win.winfo_reqheight()
-        pos_x = max(10, (self.root.winfo_screenwidth() - win_w) // 2)
-        pos_y = max(10, (self.root.winfo_screenheight() - win_h) // 2 - 20)
+        screen_w = self.root.winfo_screenwidth()
+        screen_h = self.root.winfo_screenheight()
+        dpi_scale = _get_dpi_scale(self.win)
+
+        min_w = min(screen_w - 40, max(720, int(round(700 * dpi_scale))))
+        top_min_h = self.top_bar_flow.compute_height_for_width(min_w)
+        sub_min_h = self.sub_bar_flow.compute_height_for_width(min_w)
+        status_h = max(28, status_bar.winfo_reqheight())
+        min_canvas_h = max(160, min(220, self.canvas_h + 28))
+        min_h = min(
+            screen_h - 60,
+            top_min_h + sub_min_h + min_canvas_h + status_h + 4,
+        )
+        self.win.minsize(min_w, min_h)
+
+        single_row_w = max(
+            self.top_bar_flow.get_single_row_width(),
+            self.sub_bar_flow.get_single_row_width(),
+        )
+        max_win_w = max(min_w, int(screen_w * 0.92))
+        win_w = min(max_win_w, max(min_w, single_row_w, self.canvas_w + 36))
+        top_h = self.top_bar_flow.relayout(win_w)
+        sub_h = self.sub_bar_flow.relayout(win_w)
+        win_h = min(
+            max(min_h, int(screen_h * 0.90)),
+            max(min_h, top_h + sub_h + self.canvas_h + 28 + status_h + 4),
+        )
+
+        pos_x = max(10, (screen_w - win_w) // 2)
+        pos_y = max(10, (screen_h - win_h) // 2 - 20)
         self.win.geometry(f"{win_w}x{win_h}+{pos_x}+{pos_y}")
-        self.win.lift()
+        self.win.update_idletasks()
+        apply_window_icon(self.win)
         try:
+            self.win.attributes("-topmost", True)
+        except Exception:
+            pass
+        self.win.deiconify()
+        self.win.lift()
+        self.win.update_idletasks()
+        try:
+            self.win.attributes("-alpha", 1.0)
             self.win.focus_force()
+        except Exception:
+            pass
+        self._window_ready = True
+        self.win.bind("<Unmap>", self._on_window_unmap)
+
+    def _on_canvas_container_configure(self, event: tk.Event) -> None:
+        if not self._window_ready or event.widget is not self.canvas_container:
+            return
+        if self._interaction_mode != "none":
+            return
+        avail_w = max(80, event.width - 36)
+        avail_h = max(80, event.height - 28)
+
+        # Allow scaling down when window is shrunk, or scaling up up to 1.0 (or larger if window expanded beyond 1:1)
+        max_scale = 1.0
+        if avail_w > self.target_w and avail_h > self.target_h and (
+            avail_w > self._initial_canvas_w + 60 and avail_h > self._initial_canvas_h + 60
+        ):
+            max_scale = min(2.0, avail_w / max(1, self.target_w), avail_h / max(1, self.target_h))
+
+        fit_scale = min(
+            max_scale,
+            avail_w / max(1, self.target_w),
+            avail_h / max(1, self.target_h),
+        )
+        new_cw = max(1, int(round(self.target_w * fit_scale)))
+        new_ch = max(1, int(round(self.target_h * fit_scale)))
+
+        if abs(new_cw - self.canvas_w) < 2 and abs(new_ch - self.canvas_h) < 2:
+            return
+
+        self.canvas_w = new_cw
+        self.canvas_h = new_ch
+        self.display_scale_x = self.canvas_w / max(1, self.base_image.width)
+        self.display_scale_y = self.canvas_h / max(1, self.base_image.height)
+        self.canvas.configure(width=self.canvas_w, height=self.canvas_h)
+
+        if self._active_text_entry is not None:
+            try:
+                tx, ty = self._image_to_canvas_coords(*self._text_img_pos)
+                self._active_text_entry.place(x=tx, y=ty)
+            except Exception:
+                pass
+
+        self._refresh_canvas(high_quality=False)
+        self._draw_selection_overlay()
+
+        if self._resize_hq_after_id is not None:
+            try:
+                self.win.after_cancel(self._resize_hq_after_id)
+            except Exception:
+                pass
+        self._resize_hq_after_id = self.win.after(70, self._finish_high_quality_resize)
+
+    def _finish_high_quality_resize(self) -> None:
+        self._resize_hq_after_id = None
+        if not self._window_ready:
+            return
+        try:
+            if self.win.winfo_exists():
+                self._refresh_canvas(high_quality=True)
+                self._draw_selection_overlay()
         except Exception:
             pass
 
@@ -2007,11 +2365,15 @@ class AnnotationEditor:
         export_img = self.working_image
         lower = file_path.lower()
         if lower.endswith((".jpg", ".jpeg")):
-            export_img.save(file_path, quality=98, subsampling=0, dpi=(144, 144))
+            export_img.convert("RGB").save(file_path, quality=100, subsampling=0)
         elif lower.endswith(".webp"):
             export_img.save(file_path, lossless=True, quality=100)
+        elif lower.endswith(".bmp"):
+            export_img.convert("RGB").save(file_path)
         else:
-            export_img.save(file_path, compress_level=1, dpi=(144, 144))
+            from app.platform_utils import _encode_lossless_png_bytes
+
+            Path(file_path).write_bytes(_encode_lossless_png_bytes(export_img))
 
     def copy_and_finish(self) -> None:
         self._commit_active_text()
