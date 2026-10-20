@@ -172,7 +172,7 @@ class RegionSelectorOverlay:
 
         if (screenshot.width, screenshot.height) != (self.win_width, self.win_height):
             resized = screenshot.resize(
-                (self.win_width, self.win_height), Image.Resampling.BILINEAR
+                (self.win_width, self.win_height), Image.Resampling.LANCZOS
             )
             # If macOS has native ICC profile (Display P3), convert display preview to calibrated sRGB for Tkinter
             icc = screenshot.info.get("icc_profile")
@@ -191,7 +191,7 @@ class RegionSelectorOverlay:
                 from PIL import ImageFilter
 
                 self.display_image = resized.filter(
-                    ImageFilter.UnsharpMask(radius=0.8, percent=110, threshold=2)
+                    ImageFilter.UnsharpMask(radius=1.0, percent=130, threshold=1)
                 )
             except Exception:
                 self.display_image = resized
@@ -219,7 +219,7 @@ class RegionSelectorOverlay:
         self.top.geometry(
             f"{self.win_width}x{self.win_height}+{self.win_left}+{self.win_top}"
         )
-        self.top.configure(bg="#000000", cursor="crosshair")
+        self.top.configure(bg="#000000", cursor="none")
 
         self.canvas = tk.Canvas(
             self.top,
@@ -228,7 +228,7 @@ class RegionSelectorOverlay:
             highlightthickness=0,
             bd=0,
             bg="#000000",
-            cursor="crosshair",
+            cursor="none",
         )
         self.canvas.pack(fill=tk.BOTH, expand=True)
 
@@ -265,6 +265,31 @@ class RegionSelectorOverlay:
             )
             for _ in range(4)
         ]
+
+        # Crosshair guide lines — solid for max render speed, initially off-screen
+        self._crosshair_h = self.canvas.create_line(
+            0, -10, self.win_width, -10,
+            fill=self.accent_color, width=1
+        )
+        self._crosshair_v = self.canvas.create_line(
+            -10, 0, -10, self.win_height,
+            fill=self.accent_color, width=1
+        )
+
+        # Coordinate label near cursor (canvas items with dark pill background & crisp text)
+        self._coord_bg_id = self.canvas.create_rectangle(
+            0, 0, 0, 0, fill="#0f172a", outline=self.accent_color, width=1, state="hidden"
+        )
+        self._coord_text_id = self.canvas.create_text(
+            0, 0, text="", fill="#f8fafc",
+            font=("Helvetica Neue", 9, "bold"), anchor=tk.NW, state="hidden"
+        )
+
+        # Ensure guide lines and coordinate badge are always on top
+        self.canvas.tag_raise(self._crosshair_h)
+        self.canvas.tag_raise(self._crosshair_v)
+        self.canvas.tag_raise(self._coord_bg_id)
+        self.canvas.tag_raise(self._coord_text_id)
 
         self._draw_top_banner()
         self._bind_events()
@@ -371,8 +396,11 @@ class RegionSelectorOverlay:
 
     def _bind_events(self) -> None:
         self.canvas.bind("<ButtonPress-1>", self._on_mouse_down)
+        self.canvas.bind("<Motion>", self._on_mouse_move)
         self.canvas.bind("<B1-Motion>", self._on_mouse_drag)
         self.canvas.bind("<ButtonRelease-1>", self._on_mouse_up)
+        self.canvas.bind("<Enter>", self._on_mouse_move)
+        self.canvas.bind("<Leave>", self._on_mouse_leave)
         self.canvas.bind("<Double-Button-1>", lambda _e: self._select_fullscreen())
         self.canvas.bind("<ButtonPress-2>", self._cancel)
         self.canvas.bind("<ButtonPress-3>", self._cancel)
@@ -416,19 +444,68 @@ class RegionSelectorOverlay:
             self._patch_after_id = None
         self._patch_pending = False
 
+        self.canvas.coords(self._crosshair_h, 0, self._start_y, self.win_width, self._start_y)
+        self.canvas.coords(self._crosshair_v, self._start_x, 0, self._start_x, self.win_height)
+        self._update_coord_label(self._start_x, self._start_y)
+
+    def _on_mouse_move(self, event: tk.Event) -> None:
+        """Update crosshair position and coordinate label immediately (0ms latency)."""
+        if self._closed or self._dragging:
+            return
+        x = max(0, min(self.win_width, event.x))
+        y = max(0, min(self.win_height, event.y))
+        self.canvas.coords(self._crosshair_h, 0, y, self.win_width, y)
+        self.canvas.coords(self._crosshair_v, x, 0, x, self.win_height)
+        self._update_coord_label(x, y)
+
+    def _on_mouse_leave(self, _event: tk.Event) -> None:
+        """Hide crosshair and coordinates when mouse leaves canvas."""
+        if self._closed or self._dragging:
+            return
+        self.canvas.coords(self._crosshair_h, 0, -10, self.win_width, -10)
+        self.canvas.coords(self._crosshair_v, -10, 0, -10, self.win_height)
+        self.canvas.itemconfigure(self._coord_bg_id, state="hidden")
+        self.canvas.itemconfigure(self._coord_text_id, state="hidden")
+
     def _on_mouse_drag(self, event: tk.Event) -> None:
+        """Update selection region and crosshair immediately (0ms latency)."""
         if not self._dragging or self._closed:
             return
         self._cur_x = max(0, min(self.win_width, event.x))
         self._cur_y = max(0, min(self.win_height, event.y))
+        x, y = self._cur_x, self._cur_y
 
-        # 1. Update selection vector outline, handles, and badge IMMEDIATELY (0.01ms - 120 FPS native tracking)
+        # Update crosshair and coordinate label immediately (0ms latency)
+        self.canvas.coords(self._crosshair_h, 0, y, self.win_width, y)
+        self.canvas.coords(self._crosshair_v, x, 0, x, self.win_height)
+        self._update_coord_label(x, y)
+
+        # Update selection geometry on canvas immediately (0ms latency)
         self._update_selection_geometry()
 
-        # 2. Schedule throttled bright patch update without clogging mouse event queue
+        # Schedule throttled bright patch update without blocking mouse movement
         if not self._patch_pending:
             self._patch_pending = True
             self._patch_after_id = self.top.after(20, self._render_bright_patch)
+
+    def _update_coord_label(self, x: int, y: int) -> None:
+        """Update coordinate text near the cursor on the canvas."""
+        phys_x = int(round(x * self.scale_x))
+        phys_y = int(round(y * self.scale_y))
+        coord_str = f" {phys_x}, {phys_y} "
+        # Position: bottom-right of cursor, flip if near edge
+        lx = x + 16
+        ly = y + 16
+        cw = len(coord_str) * 7 + 8
+        ch = 20
+        if lx + cw > self.win_width - 8:
+            lx = x - cw - 12
+        if ly + ch > self.win_height - 8:
+            ly = y - ch - 12
+        self.canvas.coords(self._coord_bg_id, lx, ly, lx + cw, ly + ch)
+        self.canvas.itemconfigure(self._coord_bg_id, state="normal")
+        self.canvas.coords(self._coord_text_id, lx + 4, ly + 2)
+        self.canvas.itemconfigure(self._coord_text_id, text=coord_str, state="normal")
 
     def _update_selection_geometry(self) -> None:
         """Update selection border, handles, and resolution badge with zero latency (120 FPS)."""

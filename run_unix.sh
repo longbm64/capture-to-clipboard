@@ -17,6 +17,11 @@ fi
 source .venv/bin/activate
 
 python -m pip install -r requirements.txt --quiet
+
+# Dừng phiên bản cũ đang chạy nếu có để tránh xung đột
+pkill -f "python.*main.py" 2>/dev/null || true
+sleep 0.3
+
 if [[ "$1" == "--foreground" || "$1" == "-f" ]]; then
     echo "Đang chạy CHỤP MÀN HÌNH ở chế độ foreground (bấm Ctrl+C để dừng)..."
     exec python main.py "${@:2}"

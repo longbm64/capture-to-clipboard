@@ -15,6 +15,18 @@ from pathlib import Path
 import queue
 import signal
 import sys
+
+if sys.platform == "darwin":
+    os.environ["ApplePersistenceIgnoreState"] = "YES"
+    try:
+        from Foundation import NSUserDefaults
+
+        _defaults = NSUserDefaults.standardUserDefaults()
+        _defaults.setBool_forKey_(True, "ApplePersistenceIgnoreState")
+        _defaults.setBool_forKey_(False, "NSQuitAlwaysKeepsWindows")
+    except Exception:
+        pass
+
 import tkinter as tk
 from typing import Optional, Tuple
 

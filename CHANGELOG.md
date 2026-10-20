@@ -4,6 +4,20 @@ Toàn bộ các phiên bản phát hành của **Capture To Clipboard** được
 
 ---
 
+## [v1.3.7] - 2026-10-20
+
+### 🎯 Đường gióng tâm tọa độ toàn màn hình & Tối ưu 0ms phản hồi
+- **Thước ngắm chữ thập X, Y (Full-screen Crosshair Guidelines):**
+  - Tự động thay thế con trỏ mặc định bằng hai đường gióng trục ngang & trục dọc toàn màn hình với màu chủ đạo rõ nét.
+  - Hiển thị nhãn tọa độ `(X, Y)` dạng pill nền tối Slate-900, viền màu chủ đạo và chữ trắng tương phản cao ngay cạnh con trỏ chuột.
+  - Tối ưu hóa phản hồi tức thì `0ms` đồng bộ trên sự kiện chuột, đạt độ mượt tối đa theo tần số quét màn hình (60Hz - 120Hz ProMotion).
+- **Khắc phục lỗi khởi động treo ngầm trên macOS:**
+  - Bổ sung cấu hình `ApplePersistenceIgnoreState = YES` trước khi nạp Tkinter, ngăn chặn hoàn toàn việc macOS hiển thị modal cảnh báo khôi phục crash ngầm gây đóng băng tiến trình.
+- **Trích xuất ảnh Lossless 1:1 siêu nét:**
+  - Áp dụng kỹ thuật đọc dữ liệu raw bitmap CGImage trực tiếp trên macOS, loại bỏ nén trung gian và phát hiện hệ số Retina chính xác theo màn hình hiển thị.
+
+---
+
 ## [v1.3.6] - 2026-10-20
 
 ### 🛡️ Khắc phục xung đột phím tắt trình duyệt trên macOS

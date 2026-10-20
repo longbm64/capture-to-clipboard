@@ -13,7 +13,7 @@ import subprocess
 import sys
 import tempfile
 import time
-from typing import Dict, Tuple
+from typing import Dict, Optional, Tuple
 
 import mss
 from PIL import Image, ImageFilter, ImageGrab
@@ -162,8 +162,39 @@ def _get_macos_virtual_screen_geometry() -> Optional[Dict[str, int]]:
     return None
 
 
+def _get_macos_main_display_scale() -> float:
+    """Return the actual Retina backing scale factor for the main display (e.g. 2.0 for Retina, 1.0 for non-Retina)."""
+    try:
+        from AppKit import NSScreen
+
+        main_screen = NSScreen.mainScreen()
+        if main_screen is not None:
+            factor = main_screen.backingScaleFactor()
+            if factor > 0:
+                return float(factor)
+    except Exception:
+        pass
+    # Fallback: compare physical pixel width to logical point width via Quartz
+    try:
+        import Quartz
+
+        main_id = Quartz.CGMainDisplayID()
+        phys_w = Quartz.CGDisplayPixelsWide(main_id)
+        bounds = Quartz.CGDisplayBounds(main_id)
+        logical_w = bounds.size.width
+        if logical_w > 0 and phys_w > 0:
+            return float(phys_w / logical_w)
+    except Exception:
+        pass
+    return 2.0  # Safe default for most modern Macs
+
+
 def _capture_screen_macos(root=None) -> Tuple[Image.Image, Dict[str, int]]:
-    """Capture macOS screen at native Retina resolution in under 0.08s using Quartz CGWindowListCreateImage."""
+    """Capture macOS screen at native Retina resolution using Quartz CGWindowListCreateImage.
+
+    Uses direct raw bitmap extraction from CGImage for maximum speed and zero quality loss,
+    with PNG roundtrip as fallback.
+    """
     import Quartz
     from AppKit import NSBitmapImageRep
 
@@ -185,18 +216,54 @@ def _capture_screen_macos(root=None) -> Tuple[Image.Image, Dict[str, int]]:
     if not cg_img:
         raise RuntimeError("Quartz.CGWindowListCreateImage returned null")
 
-    rep = NSBitmapImageRep.alloc().initWithCGImage_(cg_img)
-    png_data = rep.representationUsingType_properties_(4, None)
-    img = Image.open(io.BytesIO(bytes(png_data)))
-    img.load()
+    # Fast path: extract raw pixel data directly from CGImage (no PNG encode/decode roundtrip)
+    img = None
+    try:
+        w = Quartz.CGImageGetWidth(cg_img)
+        h = Quartz.CGImageGetHeight(cg_img)
+        bpp = Quartz.CGImageGetBitsPerPixel(cg_img)
+        bpr = Quartz.CGImageGetBytesPerRow(cg_img)
+
+        if bpp in (32,) and w > 0 and h > 0:
+            data_provider = Quartz.CGImageGetDataProvider(cg_img)
+            raw_data = Quartz.CGDataProviderCopyData(data_provider)
+            if raw_data and len(raw_data) >= h * bpr:
+                # CGImage on macOS is typically BGRA (premultiplied alpha)
+                alpha_info = Quartz.CGImageGetAlphaInfo(cg_img)
+                byte_order = Quartz.CGImageGetBitmapInfo(cg_img) & Quartz.kCGBitmapByteOrderMask
+
+                # Determine if byte order is little-endian (BGRA) or big-endian (ARGB/RGBA)
+                is_little_endian = byte_order in (
+                    Quartz.kCGBitmapByteOrder32Little,
+                    getattr(Quartz, "kCGBitmapByteOrder32Host", 0x00002000),
+                )
+
+                raw_bytes = bytes(raw_data)
+                if is_little_endian:
+                    # BGRA layout — most common on macOS
+                    img = Image.frombytes("RGBA", (w, h), raw_bytes, "raw", "BGRA", bpr, 1)
+                else:
+                    img = Image.frombytes("RGBA", (w, h), raw_bytes, "raw", "RGBA", bpr, 1)
+
+                # Convert to RGB for consistent downstream handling
+                img = img.convert("RGB")
+    except Exception:
+        img = None
+
+    # Fallback: PNG roundtrip via NSBitmapImageRep
+    if img is None:
+        rep = NSBitmapImageRep.alloc().initWithCGImage_(cg_img)
+        png_data = rep.representationUsingType_properties_(4, None)
+        img = Image.open(io.BytesIO(bytes(png_data)))
+        img.load()
 
     # Detect if captured image is blank/solid black due to missing Screen Recording permission
     extrema = img.getextrema()
-    if (
-        extrema[0][0] == extrema[0][1]
-        and extrema[1][0] == extrema[1][1]
-        and extrema[2][0] == extrema[2][1]
-    ):
+    channels = len(extrema) if isinstance(extrema[0], tuple) else 1
+    is_blank = channels >= 3 and all(
+        extrema[i][0] == extrema[i][1] for i in range(min(3, channels))
+    )
+    if is_blank:
         if hasattr(Quartz, "CGRequestScreenCaptureAccess"):
             Quartz.CGRequestScreenCaptureAccess()
         raise PermissionError(
@@ -491,7 +558,9 @@ def _copy_image_macos(image: Image.Image) -> Tuple[bool, str]:
             w = Quartz.CGImageGetWidth(cg_img)
             h = Quartz.CGImageGetHeight(cg_img)
             rep = NSBitmapImageRep.alloc().initWithCGImage_(cg_img)
-            rep.setSize_((w / 2.0, h / 2.0))
+            # Compute actual Retina scale factor from main display instead of hardcoding 2.0
+            scale = _get_macos_main_display_scale()
+            rep.setSize_((w / scale, h / scale))
             png_data = rep.representationUsingType_properties_(4, None)
             tiff_data = rep.TIFFRepresentation()
             ok1 = pb.setData_forType_(png_data, NSPasteboardTypePNG)
@@ -510,7 +579,8 @@ def _copy_image_macos(image: Image.Image) -> Tuple[bool, str]:
         data = NSData.dataWithBytes_length_(png_bytes, len(png_bytes))
         rep = NSBitmapImageRep.imageRepWithData_(data)
         if rep:
-            rep.setSize_((image.width / 2.0, image.height / 2.0))
+            scale = _get_macos_main_display_scale()
+            rep.setSize_((image.width / scale, image.height / scale))
             png_data = rep.representationUsingType_properties_(4, None)
             tiff_data = rep.TIFFRepresentation()
             pb.setData_forType_(png_data, NSPasteboardTypePNG)
