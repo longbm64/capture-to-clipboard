@@ -12,9 +12,14 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+import sys
 from typing import Any, Dict, List, Optional, Tuple
 
+from app import APP_VERSION
+
 APP_NAME = "Capture To Clipboard"
+APP_NAME_WITH_VERSION = f"{APP_NAME} v{APP_VERSION}"
+MOD_KEY = "Cmd" if sys.platform == "darwin" else "Ctrl"
 
 _CURRENT_LANG: Optional[str] = None
 
@@ -79,15 +84,19 @@ def set_language(lang: str) -> Tuple[bool, str]:
 TRANSLATIONS: Dict[str, Dict[str, str]] = {
     "vi": {
         # App & Tray
-        "app_title": "Capture To Clipboard",
-        "tray_tooltip": "Capture To Clipboard — Nhấn để mở Cài đặt & Hướng dẫn",
+        "app_title": f"Capture To Clipboard v{APP_VERSION}",
+        "tray_tooltip": f"Capture To Clipboard v{APP_VERSION} — Nhấn để mở Cài đặt & Hướng dẫn",
         "tray_open_settings": "Bảng hướng dẫn & Cài đặt",
         "tray_autostart": "Khởi động cùng máy tính",
-        "tray_capture_fast": "Chụp nhanh (Ctrl + 1)",
-        "tray_capture_draw": "Chụp & Ghi chú (Ctrl + 2)",
+        "tray_capture_fast": f"Chụp nhanh ({MOD_KEY} + 1)",
+        "tray_capture_draw": f"Chụp & Ghi chú ({MOD_KEY} + 2)",
         "tray_exit": "Đóng ứng dụng",
         # Toasts
-        "toast_ready": "Capture To Clipboard đã sẵn sàng  •  Ctrl+1 / PrtSc: Chụp nhanh  |  Ctrl+2: Chụp & Ghi chú",
+        "toast_ready": (
+            f"Capture To Clipboard đã sẵn sàng  •  {MOD_KEY}+1: Chụp nhanh  |  {MOD_KEY}+2: Chụp & Ghi chú"
+            if sys.platform == "darwin"
+            else "Capture To Clipboard đã sẵn sàng  •  Ctrl+1 / PrtSc: Chụp nhanh  |  Ctrl+2: Chụp & Ghi chú"
+        ),
         "toast_minimized_tray": "Capture To Clipboard đã thu xuống khay hệ thống (System Tray).",
         "toast_autostart_on": "Đã bật khởi động cùng máy tính.",
         "toast_autostart_off": "Đã tắt khởi động cùng máy tính.",
@@ -98,18 +107,26 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
         "toast_copied_draw": "Đã sao chép ảnh ghi chú ({w}×{h} px) vào bộ nhớ tạm!",
         # Settings Window
         "settings_autostart_title": "Khởi động cùng máy tính",
-        "settings_prtsc_title": "Bấm phím PrtSc để chụp nhanh (tương tự Ctrl + 1)",
+        "settings_prtsc_title": (
+            "Bấm phím PrtSc để chụp nhanh (tương tự Cmd + 1)"
+            if sys.platform == "darwin"
+            else "Bấm phím PrtSc để chụp nhanh (tương tự Ctrl + 1)"
+        ),
         "settings_lang_title": "Ngôn ngữ hiển thị (Language)",
         "status_enabled": "✓ Đang bật",
         "status_disabled": "Đang tắt",
+        "header_tagline": "Chụp vùng màn hình sắc nét & Lưu nhanh vào bộ nhớ tạm",
+        "header_badge": f"v{APP_VERSION} • Retina HD",
         "guide_section_title": "PHÍM TẮT & HƯỚNG DẪN NHANH",
+        "footer_version": f"Phiên bản: v{APP_VERSION}",
+        "footer_developer": "Được phát triển bởi KAHUB PLATFORM",
         "table_col_shortcut": "PHÍM TẮT",
         "table_col_function": "CHỨC NĂNG",
         "table_col_desc": "MÔ TẢ THAO TÁC",
         # Overlay
-        "overlay_ctrl1_title": "⚡ Ctrl + 1 : Kéo chọn vùng để sao chép ảnh ngay",
-        "overlay_ctrl2_title": "🎨 Ctrl + 2 : Kéo chọn vùng để thêm ghi chú",
-        "overlay_banner_hint": "Kéo chuột chọn vùng   •   ESC hoặc Chuột phải để hủy",
+        "overlay_ctrl1_title": f"⚡ {MOD_KEY} + 1 : Kéo chọn vùng để sao chép ảnh ngay",
+        "overlay_ctrl2_title": f"🎨 {MOD_KEY} + 2 : Kéo chọn vùng để thêm ghi chú",
+        "overlay_banner_hint": "Kéo chọn vùng   •   Nhấp đúp hoặc Space: Chụp toàn màn hình   •   ESC để hủy",
         # Editor
         "editor_undo": "Hoàn tác",
         "editor_redo": "Làm lại",
@@ -117,28 +134,31 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
         "editor_color_label": "Màu sắc:",
         "editor_custom_color": "Màu khác",
         "editor_custom_color_title": "Chọn màu nét vẽ",
-        "editor_size_label": "Độ dày:",
-        "editor_copy_btn": "Sao chép (Enter)",
-        "editor_save_btn": "Lưu ảnh (Ctrl+S)",
+        "editor_copy_btn": f"Sao chép ({MOD_KEY}+C)",
+        "editor_save_btn": f"Lưu ảnh ({MOD_KEY}+S)",
         "editor_close_btn": "Đóng (ESC)",
         "editor_save_dialog_title": "Lưu ảnh chụp màn hình chất lượng cao",
         "editor_status_bar": (
             "Kích thước: {w}×{h} px   •   "
             "Kéo giữ chuột vào nét đã vẽ để di chuyển vị trí   •   "
-            "Delete: Xóa nét chọn   |   Enter / Ctrl+C: Sao chép ảnh"
+            f"Delete: Xóa nét chọn   |   {MOD_KEY}+C: Sao chép ảnh"
         ),
     },
     "en": {
         # App & Tray
-        "app_title": "Capture To Clipboard",
-        "tray_tooltip": "Capture To Clipboard — Click to open Settings & Guide",
+        "app_title": f"Capture To Clipboard v{APP_VERSION}",
+        "tray_tooltip": f"Capture To Clipboard v{APP_VERSION} — Click to open Settings & Guide",
         "tray_open_settings": "Settings & Shortcut Guide",
         "tray_autostart": "Launch at system startup",
-        "tray_capture_fast": "Quick Capture (Ctrl + 1)",
-        "tray_capture_draw": "Capture & Annotate (Ctrl + 2)",
+        "tray_capture_fast": f"Quick Capture ({MOD_KEY} + 1)",
+        "tray_capture_draw": f"Capture & Annotate ({MOD_KEY} + 2)",
         "tray_exit": "Quit Application",
         # Toasts
-        "toast_ready": "Capture To Clipboard is ready  •  Ctrl+1 / PrtSc: Quick Capture  |  Ctrl+2: Capture & Annotate",
+        "toast_ready": (
+            f"Capture To Clipboard is ready  •  {MOD_KEY}+1: Quick Capture  |  {MOD_KEY}+2: Capture & Annotate"
+            if sys.platform == "darwin"
+            else "Capture To Clipboard is ready  •  Ctrl+1 / PrtSc: Quick Capture  |  Ctrl+2: Capture & Annotate"
+        ),
         "toast_minimized_tray": "Capture To Clipboard minimized to the System Tray.",
         "toast_autostart_on": "Enabled launch at system startup.",
         "toast_autostart_off": "Disabled launch at system startup.",
@@ -149,18 +169,26 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
         "toast_copied_draw": "Copied annotated image ({w}×{h} px) to Clipboard!",
         # Settings Window
         "settings_autostart_title": "Launch at system startup",
-        "settings_prtsc_title": "Press PrtSc for instant capture (same as Ctrl + 1)",
+        "settings_prtsc_title": (
+            "Press PrtSc for instant capture (same as Cmd + 1)"
+            if sys.platform == "darwin"
+            else "Press PrtSc for instant capture (same as Ctrl + 1)"
+        ),
         "settings_lang_title": "Display Language (Ngôn ngữ)",
         "status_enabled": "✓ Enabled",
         "status_disabled": "Disabled",
+        "header_tagline": "Ultra-sharp screen capture & instant clipboard sharing",
+        "header_badge": f"v{APP_VERSION} • Retina HD",
         "guide_section_title": "KEYBOARD SHORTCUTS & QUICK GUIDE",
+        "footer_version": f"Version: v{APP_VERSION}",
+        "footer_developer": "Developed by KAHUB PLATFORM",
         "table_col_shortcut": "SHORTCUT",
         "table_col_function": "FUNCTION",
         "table_col_desc": "ACTION DESCRIPTION",
         # Overlay
-        "overlay_ctrl1_title": "⚡ Ctrl + 1 : Drag to select region & copy immediately",
-        "overlay_ctrl2_title": "🎨 Ctrl + 2 : Drag to select region & annotate",
-        "overlay_banner_hint": "Drag to select region   •   ESC or Right-click to cancel",
+        "overlay_ctrl1_title": f"⚡ {MOD_KEY} + 1 : Drag to select region & copy immediately",
+        "overlay_ctrl2_title": f"🎨 {MOD_KEY} + 2 : Drag to select region & annotate",
+        "overlay_banner_hint": "Drag to select region   •   Double-click or Space: Full Screen   •   ESC to cancel",
         # Editor
         "editor_undo": "Undo",
         "editor_redo": "Redo",
@@ -168,15 +196,14 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
         "editor_color_label": "Color:",
         "editor_custom_color": "Custom",
         "editor_custom_color_title": "Choose stroke color",
-        "editor_size_label": "Thickness:",
-        "editor_copy_btn": "Copy (Enter)",
-        "editor_save_btn": "Save (Ctrl+S)",
+        "editor_copy_btn": f"Copy ({MOD_KEY}+C)",
+        "editor_save_btn": f"Save ({MOD_KEY}+S)",
         "editor_close_btn": "Close (ESC)",
         "editor_save_dialog_title": "Save High-Quality Screenshot",
         "editor_status_bar": (
             "Resolution: {w}×{h} px   •   "
             "Drag any drawn shape to move or resize   •   "
-            "Delete: Remove selected   |   Enter / Ctrl+C: Copy to Clipboard"
+            f"Delete: Remove selected   |   {MOD_KEY}+C: Copy to Clipboard"
         ),
     },
 }
@@ -185,14 +212,14 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
 SHORTCUTS_GUIDE_I18N: Dict[str, List[Tuple[str, str, str, str, str]]] = {
     "vi": [
         (
-            "Ctrl + 1 / PrtSc",
+            f"{MOD_KEY} + 1" if sys.platform == "darwin" else "Ctrl + 1 / PrtSc",
             "#0284c7",
             "#e0f2fe",
             "Chụp & Sao chép ngay",
-            "Kéo chọn vùng màn hình để lưu ngay ảnh nét cao vào bộ nhớ tạm (nhấn Ctrl + V để dán).",
+            f"Kéo chọn vùng màn hình để lưu ngay ảnh nét cao vào bộ nhớ tạm (nhấn {MOD_KEY} + V để dán).",
         ),
         (
-            "Ctrl + 2",
+            f"{MOD_KEY} + 2",
             "#7c3aed",
             "#f3e8ff",
             "Chụp & Ghi chú trên ảnh",
@@ -213,25 +240,25 @@ SHORTCUTS_GUIDE_I18N: Dict[str, List[Tuple[str, str, str, str, str]]] = {
             "Nhấp đúp chuột trái vào chữ đã thêm trên ảnh để chỉnh sửa lại nội dung.",
         ),
         (
-            "Enter / Ctrl + C",
+            f"{MOD_KEY} + C",
             "#059669",
             "#d1fae5",
             "Hoàn tất & Sao chép",
             "Sao chép ảnh đã ghi chú vào bộ nhớ tạm và đóng cửa sổ vẽ.",
         ),
         (
-            "Ctrl + S",
+            f"{MOD_KEY} + S",
             "#0369a1",
             "#e0f2fe",
             "Lưu thành file ảnh",
             "Lưu ảnh về máy tính với định dạng PNG, JPG hoặc WebP chất lượng cao.",
         ),
         (
-            "Ctrl + Z / Delete",
+            f"{MOD_KEY} + Z / Delete",
             "#475569",
             "#e2e8f0",
             "Hoàn tác / Xóa nét vẽ",
-            "Nhấn Ctrl + Z để quay lại bước trước, hoặc nhấn Delete để xóa nét đang chọn.",
+            f"Nhấn {MOD_KEY} + Z để quay lại bước trước, hoặc nhấn Delete để xóa nét đang chọn.",
         ),
         (
             "ESC / Chuột phải",
@@ -243,14 +270,14 @@ SHORTCUTS_GUIDE_I18N: Dict[str, List[Tuple[str, str, str, str, str]]] = {
     ],
     "en": [
         (
-            "Ctrl + 1 / PrtSc",
+            f"{MOD_KEY} + 1" if sys.platform == "darwin" else "Ctrl + 1 / PrtSc",
             "#0284c7",
             "#e0f2fe",
             "Instant Capture & Copy",
-            "Drag to select a screen region and immediately copy HD image to Clipboard (Ctrl + V to paste).",
+            f"Drag to select a screen region and immediately copy HD image to Clipboard ({MOD_KEY} + V to paste).",
         ),
         (
-            "Ctrl + 2",
+            f"{MOD_KEY} + 2",
             "#7c3aed",
             "#f3e8ff",
             "Capture & Annotate",
@@ -271,25 +298,25 @@ SHORTCUTS_GUIDE_I18N: Dict[str, List[Tuple[str, str, str, str, str]]] = {
             "Double-click on any added text annotation on the canvas to edit its content.",
         ),
         (
-            "Enter / Ctrl + C",
+            f"{MOD_KEY} + C",
             "#059669",
             "#d1fae5",
             "Finish & Copy Image",
             "Copy the annotated image to the Clipboard and close the editor window.",
         ),
         (
-            "Ctrl + S",
+            f"{MOD_KEY} + S",
             "#0369a1",
             "#e0f2fe",
             "Save Image to File",
             "Export the annotated screenshot as high-resolution PNG, JPG, or WebP.",
         ),
         (
-            "Ctrl + Z / Delete",
+            f"{MOD_KEY} + Z / Delete",
             "#475569",
             "#e2e8f0",
             "Undo / Delete Shape",
-            "Press Ctrl + Z to undo the previous step, or press Delete to remove the selected shape.",
+            f"Press {MOD_KEY} + Z to undo the previous step, or press Delete to remove the selected shape.",
         ),
         (
             "ESC / Right-Click",

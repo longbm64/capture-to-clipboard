@@ -133,8 +133,88 @@ def enhance_image_quality(
     return image.copy()
 
 
+def _get_macos_virtual_screen_geometry() -> Optional[Dict[str, int]]:
+    """Return the union bounding box across all active macOS displays in logical points."""
+    try:
+        import Quartz
+
+        max_displays = 32
+        err, active_displays, count = Quartz.CGGetActiveDisplayList(max_displays, None, None)
+        if err == 0 and count > 0:
+            min_x = float("inf")
+            min_y = float("inf")
+            max_x = float("-inf")
+            max_y = float("-inf")
+            for i in range(count):
+                b = Quartz.CGDisplayBounds(active_displays[i])
+                min_x = min(min_x, b.origin.x)
+                min_y = min(min_y, b.origin.y)
+                max_x = max(max_x, b.origin.x + b.size.width)
+                max_y = max(max_y, b.origin.y + b.size.height)
+            return {
+                "left": int(round(min_x)),
+                "top": int(round(min_y)),
+                "width": int(round(max_x - min_x)),
+                "height": int(round(max_y - min_y)),
+            }
+    except Exception:
+        pass
+    return None
+
+
+def _capture_screen_macos(root=None) -> Tuple[Image.Image, Dict[str, int]]:
+    """Capture macOS screen at native Retina resolution in under 0.08s using Quartz CGWindowListCreateImage."""
+    import Quartz
+    from AppKit import NSBitmapImageRep
+
+    if hasattr(Quartz, "CGPreflightScreenCaptureAccess"):
+        if not Quartz.CGPreflightScreenCaptureAccess():
+            if hasattr(Quartz, "CGRequestScreenCaptureAccess"):
+                Quartz.CGRequestScreenCaptureAccess()
+            raise PermissionError(
+                "macOS cần quyền Ghi màn hình (Screen Recording)! Hãy bật cho phép trong Cài đặt hệ thống."
+            )
+
+    rect = Quartz.CGRectInfinite
+    cg_img = Quartz.CGWindowListCreateImage(
+        rect,
+        Quartz.kCGWindowListOptionOnScreenOnly,
+        Quartz.kCGNullWindowID,
+        Quartz.kCGWindowImageBestResolution,
+    )
+    if not cg_img:
+        raise RuntimeError("Quartz.CGWindowListCreateImage returned null")
+
+    rep = NSBitmapImageRep.alloc().initWithCGImage_(cg_img)
+    png_data = rep.representationUsingType_properties_(4, None)
+    img = Image.open(io.BytesIO(bytes(png_data)))
+    img.load()
+
+    # Detect if captured image is blank/solid black due to missing Screen Recording permission
+    extrema = img.getextrema()
+    if (
+        extrema[0][0] == extrema[0][1]
+        and extrema[1][0] == extrema[1][1]
+        and extrema[2][0] == extrema[2][1]
+    ):
+        if hasattr(Quartz, "CGRequestScreenCaptureAccess"):
+            Quartz.CGRequestScreenCaptureAccess()
+        raise PermissionError(
+            "macOS chưa cấp quyền đọc màn hình thực tế (Screen Recording)! Màn hình bị ẩn. Hãy kiểm tra Cài đặt hệ thống."
+        )
+
+    geom = get_virtual_screen_geometry(root)
+    img.cg_image = cg_img  # type: ignore[attr-defined]
+    return img, geom
+
+
 def get_virtual_screen_geometry(root=None) -> Dict[str, int]:
     """Return the bounding box of the virtual desktop across all monitors."""
+    if sys.platform == "darwin":
+        geom_mac = _get_macos_virtual_screen_geometry()
+        if geom_mac is not None:
+            return geom_mac
+
     if sys.platform == "win32":
         try:
             user32 = ctypes.windll.user32
@@ -181,12 +261,30 @@ def get_virtual_screen_geometry(root=None) -> Dict[str, int]:
 
 def capture_virtual_screen(root=None) -> Tuple[Image.Image, Dict[str, int]]:
     """Capture the entire screen (including multi-monitor setups) at native pixel resolution."""
+    if sys.platform == "darwin":
+        try:
+            return _capture_screen_macos(root)
+        except PermissionError:
+            raise
+        except Exception as exc:
+            print(f"[Warning] _capture_screen_macos error: {exc}")
+
     try:
         sct_cls = getattr(mss, "MSS", mss.mss)
         with sct_cls() as sct:
             mon = sct.monitors[0]
             raw = sct.grab(mon)
             img = Image.frombytes("RGB", raw.size, raw.bgra, "raw", "BGRX")
+            if sys.platform == "darwin":
+                extrema = img.getextrema()
+                if (
+                    extrema[0][0] == extrema[0][1]
+                    and extrema[1][0] == extrema[1][1]
+                    and extrema[2][0] == extrema[2][1]
+                ):
+                    raise PermissionError(
+                        "macOS cần quyền Ghi màn hình (Screen Recording)! Hãy bật cho phép trong Cài đặt hệ thống."
+                    )
             geom = {
                 "left": int(mon["left"]),
                 "top": int(mon["top"]),
@@ -194,6 +292,8 @@ def capture_virtual_screen(root=None) -> Tuple[Image.Image, Dict[str, int]]:
                 "height": int(mon["height"]),
             }
             return img, geom
+    except PermissionError:
+        raise
     except Exception:
         pass
 
@@ -259,24 +359,34 @@ def capture_virtual_screen(root=None) -> Tuple[Image.Image, Dict[str, int]]:
     )
 
 
-def _encode_lossless_png_bytes(image: Image.Image) -> bytes:
-    """Encode PIL Image as 100% lossless RGBA PNG with standard sRGB, gamma, and 96 DPI chunks."""
-    import struct
-    from PIL import PngImagePlugin
-
+def _encode_lossless_png_bytes(
+    image: Image.Image,
+    dpi: Optional[Tuple[float, float]] = None,
+) -> bytes:
+    """Encode PIL Image as 100% lossless RGBA PNG preserving hardware color profile and DPI."""
     rgba_img = image.convert("RGBA")
-    png_info = PngImagePlugin.PngInfo()
-    png_info.add(b"sRGB", b"\x00")
-    png_info.add(b"gAMA", struct.pack(">I", 45455))
+    save_kw = {
+        "format": "PNG",
+        "compress_level": 1,
+    }
+    icc = image.info.get("icc_profile")
+    if icc:
+        save_kw["icc_profile"] = icc
+    else:
+        import struct
+        from PIL import PngImagePlugin
+
+        png_info = PngImagePlugin.PngInfo()
+        png_info.add(b"sRGB", b"\x00")
+        png_info.add(b"gAMA", struct.pack(">I", 45455))
+        save_kw["pnginfo"] = png_info
+
+    if dpi is None:
+        dpi = (144.0, 144.0) if sys.platform == "darwin" else (95.9866, 95.9866)
+    save_kw["dpi"] = dpi
 
     png_io = io.BytesIO()
-    rgba_img.save(
-        png_io,
-        format="PNG",
-        pnginfo=png_info,
-        dpi=(95.9866, 95.9866),
-        compress_level=1,
-    )
+    rgba_img.save(png_io, **save_kw)
     return png_io.getvalue()
 
 
@@ -368,12 +478,52 @@ def _copy_image_windows(image: Image.Image) -> Tuple[bool, str]:
 
 
 def _copy_image_macos(image: Image.Image) -> Tuple[bool, str]:
-    """Copy a PIL Image to the macOS clipboard via osascript (AppleScript)."""
+    """Copy a PIL Image to the macOS clipboard preserving 100% native Display P3 color profile and Retina sharpness."""
+    try:
+        from AppKit import NSBitmapImageRep, NSData, NSImage, NSPasteboard, NSPasteboardTypePNG, NSPasteboardTypeTIFF
+        import Quartz
+
+        pb = NSPasteboard.generalPasteboard()
+        pb.clearContents()
+
+        cg_img = getattr(image, "cg_image", None)
+        if cg_img is not None:
+            w = Quartz.CGImageGetWidth(cg_img)
+            h = Quartz.CGImageGetHeight(cg_img)
+            rep = NSBitmapImageRep.alloc().initWithCGImage_(cg_img)
+            rep.setSize_((w / 2.0, h / 2.0))
+            png_data = rep.representationUsingType_properties_(4, None)
+            tiff_data = rep.TIFFRepresentation()
+            ok1 = pb.setData_forType_(png_data, NSPasteboardTypePNG)
+            ok2 = pb.setData_forType_(tiff_data, NSPasteboardTypeTIFF)
+            if ok1 or ok2:
+                return True, "Đã copy ảnh chất lượng cao vào Clipboard!"
+    except Exception:
+        pass
+
+    png_bytes = _encode_lossless_png_bytes(image)
+    try:
+        from AppKit import NSBitmapImageRep, NSData, NSImage, NSPasteboard, NSPasteboardTypePNG, NSPasteboardTypeTIFF
+
+        pb = NSPasteboard.generalPasteboard()
+        pb.clearContents()
+        data = NSData.dataWithBytes_length_(png_bytes, len(png_bytes))
+        rep = NSBitmapImageRep.imageRepWithData_(data)
+        if rep:
+            rep.setSize_((image.width / 2.0, image.height / 2.0))
+            png_data = rep.representationUsingType_properties_(4, None)
+            tiff_data = rep.TIFFRepresentation()
+            pb.setData_forType_(png_data, NSPasteboardTypePNG)
+            pb.setData_forType_(tiff_data, NSPasteboardTypeTIFF)
+            return True, "Đã copy ảnh chất lượng cao vào Clipboard!"
+    except Exception:
+        pass
+
     tmp_fd, tmp_path = tempfile.mkstemp(suffix=".png", prefix="clip_")
     os.close(tmp_fd)
     try:
         with open(tmp_path, "wb") as f:
-            f.write(_encode_lossless_png_bytes(image))
+            f.write(png_bytes)
         escaped_path = tmp_path.replace('"', '\\"')
         script = f'set the clipboard to (read (POSIX file "{escaped_path}") as «class PNGf»)'
         res = subprocess.run(
@@ -465,3 +615,33 @@ def copy_image_to_clipboard(image: Image.Image) -> Tuple[bool, str]:
         return _copy_image_linux(image)
     except Exception as exc:
         return False, f"Lỗi khi copy vào Clipboard: {exc}"
+
+
+def set_dock_icon_visible(visible: bool) -> None:
+    """Show or hide the application icon in the macOS Dock.
+
+    On macOS:
+    - visible=True: Sets NSApplicationActivationPolicyRegular (shows in Dock, foreground app).
+    - visible=False: Sets NSApplicationActivationPolicyAccessory (hides from Dock, background tray daemon).
+    No-op on Windows and Linux.
+    """
+    if sys.platform != "darwin":
+        return
+    try:
+        from AppKit import (
+            NSApplication,
+            NSApplicationActivationPolicyAccessory,
+            NSApplicationActivationPolicyRegular,
+        )
+
+        app = NSApplication.sharedApplication()
+        target_policy = (
+            NSApplicationActivationPolicyRegular if visible else NSApplicationActivationPolicyAccessory
+        )
+        if app.activationPolicy() != target_policy:
+            app.setActivationPolicy_(target_policy)
+            if visible:
+                app.activateIgnoringOtherApps_(True)
+    except Exception:
+        pass
+

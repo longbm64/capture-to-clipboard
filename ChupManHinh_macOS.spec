@@ -1,6 +1,13 @@
 # -*- mode: python ; coding: utf-8 -*-
 """PyInstaller Spec File for macOS Application Bundle (Capture To Clipboard.app)."""
 
+import sys
+from pathlib import Path
+
+# Ensure project root is in sys.path
+sys.path.insert(0, str(Path.cwd()))
+from app import __version__ as APP_VERSION
+
 block_cipher = None
 
 a = Analysis(
@@ -64,8 +71,8 @@ app = BUNDLE(
     info_plist={
         'CFBundleName': 'Capture To Clipboard',
         'CFBundleDisplayName': 'Capture To Clipboard',
-        'CFBundleShortVersionString': '1.0.0',
-        'CFBundleVersion': '1.0.0',
+        'CFBundleShortVersionString': APP_VERSION,
+        'CFBundleVersion': APP_VERSION,
         'NSHighResolutionCapable': True,
         'LSMinimumSystemVersion': '11.0',
         'NSScreenCaptureUsageDescription': (

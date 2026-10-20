@@ -17,5 +17,19 @@ fi
 source .venv/bin/activate
 
 python -m pip install -r requirements.txt --quiet
-nohup python main.py >/dev/null 2>&1 &
-echo "Đã khởi chạy CHỤP MÀN HÌNH!"
+if [[ "$1" == "--foreground" || "$1" == "-f" ]]; then
+    echo "Đang chạy CHỤP MÀN HÌNH ở chế độ foreground (bấm Ctrl+C để dừng)..."
+    exec python main.py "${@:2}"
+fi
+
+LOG_FILE=".app.log"
+nohup python main.py "$@" > "$LOG_FILE" 2>&1 &
+PID=$!
+sleep 0.5
+if kill -0 "$PID" 2>/dev/null; then
+    echo "Đã khởi chạy CHỤP MÀN HÌNH (PID: $PID)! Biểu tượng khay hệ thống đã sẵn sàng."
+else
+    echo "[LỖI] Ứng dụng không thể khởi động. Chi tiết lỗi:"
+    cat "$LOG_FILE"
+    exit 1
+fi

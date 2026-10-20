@@ -17,8 +17,10 @@ from dataclasses import dataclass, field
 from datetime import datetime
 import math
 from pathlib import Path
+import sys
 import tkinter as tk
 from tkinter import colorchooser, filedialog
+import tkinter.font as tkfont
 from typing import Callable, Dict, List, Optional, Tuple
 
 from PIL import Image, ImageDraw, ImageFont, ImageTk
@@ -571,15 +573,202 @@ def _draw_tool_vector_icon(
             draw.ellipse((px - r, py - r, px + r, py + r), fill=color)
 
 
-class ModernPillButton(tk.Label):
-    """High-DPI flat button with 4 rounded corners, centered [icon + text], and uniform baseline."""
+def _draw_canvas_vector_icon(
+    canvas: tk.Canvas, icon_name: str, cx: float, cy: float, size: float, fg: str
+) -> None:
+    sz = size * 0.72
+    w = max(1.5, size * 0.12)
+    x1, y1 = cx - sz / 2.0, cy - sz / 2.0
+    x2, y2 = cx + sz / 2.0, cy + sz / 2.0
+
+    if icon_name == "arrow":
+        canvas.create_line(x1, y2, x2, y1, fill=fg, width=w * 1.3, capstyle=tk.ROUND)
+        d = sz * 0.42
+        canvas.create_line(x2 - d, y1, x2, y1, fill=fg, width=w * 1.3, capstyle=tk.ROUND)
+        canvas.create_line(x2, y1, x2, y1 + d, fill=fg, width=w * 1.3, capstyle=tk.ROUND)
+
+    elif icon_name == "pencil":
+        canvas.create_line(
+            x1 + 1, y2 - 1, x2 - 1, y1 + 1, fill=fg, width=w * 1.6, capstyle=tk.ROUND
+        )
+        canvas.create_polygon(
+            x1, y2, x1 + 3, y2 - 6, x1 + 6, y2 - 3, fill=fg
+        )
+
+    elif icon_name == "highlighter":
+        canvas.create_line(
+            x1 + 1, y2 - 1, x2 - 1, y1 + 1, fill=fg, width=w * 2.4, capstyle=tk.ROUND
+        )
+
+    elif icon_name == "rect":
+        canvas.create_rectangle(x1, y1, x2, y2, outline=fg, width=w * 1.2)
+
+    elif icon_name == "ellipse":
+        canvas.create_oval(x1, y1, x2, y2, outline=fg, width=w * 1.2)
+
+    elif icon_name == "line":
+        canvas.create_line(x1, y2, x2, y1, fill=fg, width=w * 1.3, capstyle=tk.ROUND)
+        r = w * 0.9
+        canvas.create_oval(x1 - r, y2 - r, x1 + r, y2 + r, fill=fg, outline="")
+        canvas.create_oval(x2 - r, y1 - r, x2 + r, y1 + r, fill=fg, outline="")
+
+    elif icon_name == "text":
+        canvas.create_text(
+            cx,
+            cy,
+            text="T",
+            font=("Roboto", max(10, int(size * 0.9)), "bold"),
+            fill=fg,
+            anchor=tk.CENTER,
+        )
+
+    elif icon_name == "pixelate":
+        s = int(sz)
+        cell = s / 3.0
+        x0, y0 = cx - s / 2.0, cy - s / 2.0
+        for r_idx in range(3):
+            for c_idx in range(3):
+                if (r_idx + c_idx) % 2 == 0:
+                    canvas.create_rectangle(
+                        x0 + c_idx * cell,
+                        y0 + r_idx * cell,
+                        x0 + (c_idx + 1) * cell,
+                        y0 + (r_idx + 1) * cell,
+                        fill=fg,
+                        outline="",
+                    )
+
+    elif icon_name == "undo":
+        r = sz * 0.48
+        canvas.create_arc(
+            cx - r,
+            cy - r,
+            cx + r,
+            cy + r,
+            style=tk.ARC,
+            start=35,
+            extent=180,
+            width=w * 1.3,
+            outline=fg,
+        )
+        canvas.create_polygon(
+            cx - r - 2, cy, cx - r + 3, cy - 5, cx - r + 3, cy + 4, fill=fg
+        )
+
+    elif icon_name == "redo":
+        r = sz * 0.48
+        canvas.create_arc(
+            cx - r,
+            cy - r,
+            cx + r,
+            cy + r,
+            style=tk.ARC,
+            start=145,
+            extent=-180,
+            width=w * 1.3,
+            outline=fg,
+        )
+        canvas.create_polygon(
+            cx + r + 2, cy, cx + r - 3, cy - 5, cx + r - 3, cy + 4, fill=fg
+        )
+
+    elif icon_name == "clear":
+        top_y = y1 + sz * 0.22
+        canvas.create_line(
+            x1 + sz * 0.1, top_y, x2 - sz * 0.1, top_y, fill=fg, width=w * 1.2
+        )
+        canvas.create_line(
+            cx - sz * 0.15,
+            top_y - sz * 0.12,
+            cx + sz * 0.15,
+            top_y - sz * 0.12,
+            fill=fg,
+            width=w,
+        )
+        canvas.create_rectangle(
+            x1 + sz * 0.2, top_y, x2 - sz * 0.2, y2 - sz * 0.05, outline=fg, width=w
+        )
+        canvas.create_line(cx, top_y + 2, cx, y2 - sz * 0.1, fill=fg, width=w * 0.9)
+
+    elif icon_name == "palette":
+        r = sz * 0.45
+        canvas.create_oval(cx - r, cy - r, cx + r, cy + r, outline=fg, width=w)
+        dr = max(1.0, w * 0.75)
+        for dx, dy in [(-r * 0.4, -r * 0.3), (r * 0.3, -r * 0.4), (-r * 0.3, r * 0.3)]:
+            canvas.create_oval(
+                cx + dx - dr,
+                cy + dy - dr,
+                cx + dx + dr,
+                cy + dy + dr,
+                fill=fg,
+                outline="",
+            )
+
+    elif icon_name == "copy":
+        canvas.create_rectangle(x1 + 1, y1 + 1, x2 - 1, y2 - 1, outline=fg, width=w)
+        canvas.create_line(
+            x1 + sz * 0.22,
+            cy,
+            cx - 1,
+            y2 - sz * 0.22,
+            x2 - sz * 0.18,
+            y1 + sz * 0.25,
+            fill=fg,
+            width=w * 1.3,
+            capstyle=tk.ROUND,
+            joinstyle=tk.ROUND,
+        )
+
+    elif icon_name == "save":
+        canvas.create_line(
+            cx, y1 + 1, cx, cy + sz * 0.2, fill=fg, width=w * 1.2, capstyle=tk.ROUND
+        )
+        d = sz * 0.25
+        canvas.create_line(
+            cx - d,
+            cy - 1,
+            cx,
+            cy + sz * 0.25,
+            cx + d,
+            cy - 1,
+            fill=fg,
+            width=w * 1.2,
+            capstyle=tk.ROUND,
+            joinstyle=tk.ROUND,
+        )
+        canvas.create_line(
+            x1 + 1,
+            cy + sz * 0.15,
+            x1 + 1,
+            y2,
+            x2 - 1,
+            y2,
+            x2 - 1,
+            cy + sz * 0.15,
+            fill=fg,
+            width=w,
+            joinstyle=tk.ROUND,
+        )
+
+    elif icon_name == "close":
+        d = sz * 0.38
+        canvas.create_line(
+            cx - d, cy - d, cx + d, cy + d, fill=fg, width=w * 1.3, capstyle=tk.ROUND
+        )
+        canvas.create_line(
+            cx - d, cy + d, cx + d, cy - d, fill=fg, width=w * 1.3, capstyle=tk.ROUND
+        )
+
+
+class ModernPillButton(tk.Canvas):
+    """Vector-rendered, Retina-sharp pill button with rounded corners, vector icon, and native CoreText font."""
 
     def __init__(
         self,
         parent: tk.Widget,
         text: str,
-        icon_name: Optional[str],
-        command: Callable[[], None],
+        icon_name: Optional[str] = None,
+        command: Optional[Callable[[], None]] = None,
         parent_bg: str = "#e8eef5",
         bg_normal: str = "#ffffff",
         bg_hover: str = "#f1f5f9",
@@ -595,10 +784,9 @@ class ModernPillButton(tk.Label):
         pad_x_pt: float = 14.0,
         corner_radius_pt: float = 5.5,
     ) -> None:
-        super().__init__(parent, bg=parent_bg, bd=0, highlightthickness=0, cursor="hand2")
         self.text_label = text
         self.icon_name = icon_name
-        self.command = command
+        self.command = command or (lambda: None)
         self.parent_bg = parent_bg
         self.bg_normal = bg_normal
         self.bg_hover = bg_hover
@@ -611,123 +799,116 @@ class ModernPillButton(tk.Label):
         self.border_active = border_active
         self.border_normal = border_normal
         self.border_hover = border_hover
-        self.corner_radius_pt = corner_radius_pt
+        self.corner_radius = max(4, min(int(round(height_pt)) // 2, int(round(corner_radius_pt))))
 
-        self.dpi_scale = _get_dpi_scale(parent)
-        self.font_px = max(12, int(round(font_pt * self.dpi_scale)))
-        self.icon_px = (
-            max(16, int(round((font_pt + 2) * self.dpi_scale)))
-            if self.icon_name
-            else 0
+        self.font_obj = tkfont.Font(family="Roboto", size=max(9, int(round(font_pt))), weight="bold")
+        text_w = self.font_obj.measure(self.text_label)
+        self.icon_w = int(round(font_pt * 1.3)) if self.icon_name else 0
+        self.gap_w = 6 if self.icon_name else 0
+        self.pad_x = max(10, int(round(pad_x_pt)))
+
+        self.btn_w = self.pad_x * 2 + self.icon_w + self.gap_w + text_w
+        self.btn_h = int(round(height_pt))
+
+        super().__init__(
+            parent,
+            width=self.btn_w,
+            height=self.btn_h,
+            bg=parent_bg,
+            highlightthickness=0,
+            bd=0,
+            cursor="hand2",
         )
-        self.btn_h = max(28, int(round(height_pt * self.dpi_scale)))
-        self.pad_x = max(10, int(round(pad_x_pt * self.dpi_scale)))
-        self.gap_px = (
-            max(8, int(round(7.5 * self.dpi_scale))) if self.icon_name else 0
-        )
-
-        ss = 3
-        ss_font = _load_ui_font(self.font_px * ss, bold=True)
-        dummy_img = Image.new("RGBA", (10, 10))
-        dummy_draw = ImageDraw.Draw(dummy_img)
-        bbox = dummy_draw.textbbox((0, 0), self.text_label, font=ss_font)
-        text_w_1x = int(math.ceil((bbox[2] - bbox[0]) / ss))
-
-        self.btn_w = self.pad_x * 2 + self.icon_px + self.gap_px + text_w_1x
-
         self._is_active = False
         self._is_hovered = False
-
-        self._img_normal = self._render_state(bg_normal, fg_normal, border_normal)
-        self._img_hover = self._render_state(bg_hover, self.fg_hover, self.border_hover)
-        self._img_active = self._render_state(bg_active, fg_active, border_active)
-        self._img_active_hover = self._render_state("#0369a1", "#ffffff", None)
-
-        self.configure(image=self._img_normal)
 
         self.bind("<Enter>", self._on_enter)
         self.bind("<Leave>", self._on_leave)
         self.bind("<ButtonPress-1>", self._on_click)
-
-    def _render_state(
-        self, bg_hex: str, fg_hex: str, border_hex: Optional[str]
-    ) -> ImageTk.PhotoImage:
-        ss = 3
-        W, H = self.btn_w * ss, self.btn_h * ss
-        img = Image.new("RGBA", (W, H), _hex_to_rgba(self.parent_bg, 255))
-        draw = ImageDraw.Draw(img)
-
-        pad = max(2, int(round(1.2 * self.dpi_scale * ss)))
-        radius = int(round(self.corner_radius_pt * self.dpi_scale * ss))
-
-        has_border = bool(border_hex and border_hex.lower() != bg_hex.lower())
-        if has_border and border_hex is not None:
-            draw.rounded_rectangle(
-                (pad, pad, W - pad, H - pad),
-                radius=radius,
-                fill=_hex_to_rgba(bg_hex, 255),
-                outline=_hex_to_rgba(border_hex, 255),
-                width=max(2, int(round(0.95 * self.dpi_scale * ss))),
-            )
-        else:
-            draw.rounded_rectangle(
-                (pad, pad, W - pad, H - pad),
-                radius=radius,
-                fill=_hex_to_rgba(bg_hex, 255),
-            )
-
-        fg_rgba = _hex_to_rgba(fg_hex, 255)
-        icon_size = self.icon_px * ss
-        gap = self.gap_px * ss
-        font = _load_ui_font(self.font_px * ss, bold=True)
-
-        bbox = draw.textbbox((0, 0), self.text_label, font=font)
-        text_w = bbox[2] - bbox[0]
-
-        total_content_w = icon_size + gap + text_w
-        start_x = (W - total_content_w) // 2
-
-        if self.icon_name:
-            icon_cx = start_x + (icon_size // 2)
-            icon_cy = H // 2
-            _draw_tool_vector_icon(draw, self.icon_name, icon_cx, icon_cy, icon_size, fg_rgba)
-
-        ref_bbox = draw.textbbox((0, 0), "ÁgĐy", font=font)
-        ref_h = ref_bbox[3] - ref_bbox[1]
-        text_x = start_x + icon_size + gap - bbox[0]
-        text_y = (H - ref_h) // 2 - ref_bbox[1]
-
-        draw.text((text_x, text_y), self.text_label, fill=fg_rgba, font=font)
-
-        smooth = img.resize((self.btn_w, self.btn_h), Image.Resampling.LANCZOS)
-        return ImageTk.PhotoImage(smooth)
+        self._redraw()
 
     def set_active(self, active: bool) -> None:
         self._is_active = active
-        self._update_image()
+        self._redraw()
 
     def _on_enter(self, _event=None) -> None:
         self._is_hovered = True
-        self._update_image()
+        self._redraw()
 
     def _on_leave(self, _event=None) -> None:
         self._is_hovered = False
-        self._update_image()
+        self._redraw()
 
     def _on_click(self, _event=None) -> None:
-        self.command()
+        if self.command:
+            self.command()
 
-    def _update_image(self) -> None:
+    def _redraw(self) -> None:
+        self.delete("all")
         if self._is_active:
-            self.configure(
-                image=self._img_active_hover if self._is_hovered else self._img_active
-            )
+            bg_col = "#0369a1" if self._is_hovered else self.bg_active
+            fg_col = self.fg_active
+            border_col = self.border_active or bg_col
         else:
-            self.configure(image=self._img_hover if self._is_hovered else self._img_normal)
+            bg_col = self.bg_hover if self._is_hovered else self.bg_normal
+            fg_col = self.fg_hover if self._is_hovered else self.fg_normal
+            border_col = self.border_hover if self._is_hovered else self.border_normal
+
+        x1, y1 = 1, 1
+        x2, y2 = self.btn_w - 1, self.btn_h - 1
+        r = self.corner_radius
+        points = [
+            x1 + r, y1,
+            x1 + r, y1,
+            x2 - r, y1,
+            x2 - r, y1,
+            x2, y1,
+            x2, y1 + r,
+            x2, y1 + r,
+            x2, y2 - r,
+            x2, y2 - r,
+            x2, y2,
+            x2 - r, y2,
+            x2 - r, y2,
+            x1 + r, y2,
+            x1 + r, y2,
+            x1, y2,
+            x1, y2 - r,
+            x1, y2 - r,
+            x1, y1 + r,
+            x1, y1 + r,
+            x1, y1,
+        ]
+        has_border = bool(border_col and border_col.lower() != bg_col.lower())
+        self.create_polygon(
+            points,
+            smooth=True,
+            fill=bg_col,
+            outline=border_col if has_border else bg_col,
+            width=1,
+        )
+
+        tot_w = self.icon_w + self.gap_w + self.font_obj.measure(self.text_label)
+        cx_start = (self.btn_w - tot_w) / 2.0
+        cy = self.btn_h / 2.0
+
+        if self.icon_name and self.icon_w > 0:
+            icx = cx_start + self.icon_w / 2.0
+            _draw_canvas_vector_icon(self, self.icon_name, icx, cy, self.icon_w, fg_col)
+            cx_start += self.icon_w + self.gap_w
+
+        self.create_text(
+            cx_start,
+            cy,
+            text=self.text_label,
+            font=self.font_obj,
+            fill=fg_col,
+            anchor=tk.W,
+        )
 
 
-class ColorSwatchButton(tk.Label):
-    """High-DPI anti-aliased circular color swatch button with active ring."""
+class ColorSwatchButton(tk.Canvas):
+    """Vector-rendered circular color swatch button with active ring."""
 
     def __init__(
         self,
@@ -737,76 +918,67 @@ class ColorSwatchButton(tk.Label):
         base_size: int = 24,
         parent_bg: str = "#f1f5f9",
     ) -> None:
-        super().__init__(parent, bg=parent_bg, bd=0, highlightthickness=0, cursor="hand2")
         self.hex_color = hex_color
         self.command = command
-        self.dpi_scale = _get_dpi_scale(parent)
-        self.swatch_size = max(28, int(round(base_size * self.dpi_scale)))
         self.parent_bg = parent_bg
+        self.swatch_size = int(round(base_size))
+
+        super().__init__(
+            parent,
+            width=self.swatch_size,
+            height=self.swatch_size,
+            bg=parent_bg,
+            highlightthickness=0,
+            bd=0,
+            cursor="hand2",
+        )
         self._active = False
         self._hovered = False
 
-        self._img_normal = self._render(active=False, hovered=False)
-        self._img_hover = self._render(active=False, hovered=True)
-        self._img_active = self._render(active=True, hovered=False)
-
-        self.configure(image=self._img_normal)
         self.bind("<Enter>", self._on_enter)
         self.bind("<Leave>", self._on_leave)
         self.bind("<ButtonPress-1>", lambda _e: self.command())
-
-    def _render(self, active: bool, hovered: bool) -> ImageTk.PhotoImage:
-        ss = 3
-        S = self.swatch_size * ss
-        img = Image.new("RGBA", (S, S), _hex_to_rgba(self.parent_bg, 255))
-        draw = ImageDraw.Draw(img)
-
-        ring_pad = int(round(2 * self.dpi_scale * ss))
-        if active:
-            draw.ellipse(
-                (ring_pad, ring_pad, S - ring_pad, S - ring_pad),
-                outline=(2, 132, 199, 255),
-                width=max(3, int(round(2.4 * self.dpi_scale * ss))),
-            )
-            pad = int(round(6 * self.dpi_scale * ss))
-        elif hovered:
-            draw.ellipse(
-                (ring_pad, ring_pad, S - ring_pad, S - ring_pad),
-                outline=(100, 116, 139, 220),
-                width=max(2, int(round(1.6 * self.dpi_scale * ss))),
-            )
-            pad = int(round(5 * self.dpi_scale * ss))
-        else:
-            pad = int(round(5.5 * self.dpi_scale * ss))
-
-        draw.ellipse(
-            (pad, pad, S - pad, S - pad),
-            fill=_hex_to_rgba(self.hex_color, 255),
-            outline=(100, 116, 139, 185),
-            width=max(2, int(round(1.2 * self.dpi_scale * ss))),
-        )
-        smooth = img.resize(
-            (self.swatch_size, self.swatch_size), Image.Resampling.LANCZOS
-        )
-        return ImageTk.PhotoImage(smooth)
+        self._redraw()
 
     def set_active(self, active: bool) -> None:
         self._active = active
-        self.configure(image=self._img_active if active else self._img_normal)
+        self._redraw()
 
     def _on_enter(self, _e=None) -> None:
         self._hovered = True
-        if not self._active:
-            self.configure(image=self._img_hover)
+        self._redraw()
 
     def _on_leave(self, _e=None) -> None:
         self._hovered = False
-        if not self._active:
-            self.configure(image=self._img_normal)
+        self._redraw()
+
+    def _redraw(self) -> None:
+        self.delete("all")
+        S = self.swatch_size
+        if self._active:
+            self.create_oval(1, 1, S - 1, S - 1, outline="#0284c7", width=2)
+            pad = 4.5
+        elif self._hovered:
+            self.create_oval(1, 1, S - 1, S - 1, outline="#94a3b8", width=1.5)
+            pad = 3.5
+        else:
+            pad = 3.5
+
+        is_white = self.hex_color.lower() in ("#ffffff", "#fff")
+        inner_outline = "#94a3b8" if is_white else ""
+        self.create_oval(
+            pad,
+            pad,
+            S - pad,
+            S - pad,
+            fill=self.hex_color,
+            outline=inner_outline,
+            width=1,
+        )
 
 
-class SizeDotButton(tk.Label):
-    """High-DPI flat stroke thickness button with 4 rounded corners and centered [dot + text]."""
+class SizeDotButton(tk.Canvas):
+    """Vector-rendered stroke thickness button with 4 rounded corners and centered [dot + text]."""
 
     def __init__(
         self,
@@ -817,92 +989,117 @@ class SizeDotButton(tk.Label):
         command: Callable[[], None],
         parent_bg: str = "#f1f5f9",
     ) -> None:
-        super().__init__(parent, bg=parent_bg, bd=0, highlightthickness=0, cursor="hand2")
         self.size_val = size_val
         self.label_text = label_text
-        self.dpi_scale = _get_dpi_scale(parent)
-        self.dot_r = max(3, int(round(dot_radius_pt * self.dpi_scale)))
-        self.font_px = max(14, int(round(12 * self.dpi_scale)))
-        self.btn_h = max(36, int(round(30 * self.dpi_scale)))
-        self.pad_x = max(13, int(round(12 * self.dpi_scale)))
-        self.gap_px = max(7, int(round(7 * self.dpi_scale)))
+        self.dot_r = max(2.5, float(dot_radius_pt))
         self.command = command
         self.parent_bg = parent_bg
+        self.font_obj = tkfont.Font(family="Roboto", size=11, weight="bold")
+        text_w = self.font_obj.measure(self.label_text)
+        dot_d = int(self.dot_r * 2)
+        gap = 6
+        pad_x = 12
+        self.btn_w = pad_x * 2 + dot_d + gap + text_w
+        self.btn_h = 30
+        self.corner_radius = 5
 
-        ss = 3
-        ss_font = _load_ui_font(self.font_px * ss, bold=True)
-        dummy_img = Image.new("RGBA", (10, 10))
-        dummy_draw = ImageDraw.Draw(dummy_img)
-        bbox = dummy_draw.textbbox((0, 0), self.label_text, font=ss_font)
-        text_w_1x = int(math.ceil((bbox[2] - bbox[0]) / ss))
-        dot_d_1x = self.dot_r * 2
-
-        self.btn_w = self.pad_x * 2 + dot_d_1x + self.gap_px + text_w_1x
+        super().__init__(
+            parent,
+            width=self.btn_w,
+            height=self.btn_h,
+            bg=parent_bg,
+            highlightthickness=0,
+            bd=0,
+            cursor="hand2",
+        )
         self._active = False
+        self._hovered = False
 
-        self._img_normal = self._render(active=False, hovered=False)
-        self._img_hover = self._render(active=False, hovered=True)
-        self._img_active = self._render(active=True, hovered=False)
-
-        self.configure(image=self._img_normal)
-        self.bind("<Enter>", lambda _e: not self._active and self.configure(image=self._img_hover))
-        self.bind("<Leave>", lambda _e: not self._active and self.configure(image=self._img_normal))
+        self.bind("<Enter>", self._on_enter)
+        self.bind("<Leave>", self._on_leave)
         self.bind("<ButtonPress-1>", lambda _e: self.command())
-
-    def _render(self, active: bool, hovered: bool) -> ImageTk.PhotoImage:
-        ss = 3
-        W, H = self.btn_w * ss, self.btn_h * ss
-        img = Image.new("RGBA", (W, H), _hex_to_rgba(self.parent_bg, 255))
-        draw = ImageDraw.Draw(img)
-
-        bg = "#0284c7" if active else ("#e0f2fe" if hovered else "#ffffff")
-        fg = "#ffffff" if active else ("#0369a1" if hovered else "#1e293b")
-
-        pad = max(2, int(round(1.2 * self.dpi_scale * ss)))
-        radius = int(round(5.5 * self.dpi_scale * ss))
-        if active:
-            draw.rounded_rectangle(
-                (pad, pad, W - pad, H - pad),
-                radius=radius,
-                fill=_hex_to_rgba(bg, 255),
-            )
-        else:
-            border = "#7dd3fc" if hovered else "#cbd5e1"
-            draw.rounded_rectangle(
-                (pad, pad, W - pad, H - pad),
-                radius=radius,
-                fill=_hex_to_rgba(bg, 255),
-                outline=_hex_to_rgba(border, 255),
-                width=max(2, int(round(0.95 * self.dpi_scale * ss))),
-            )
-
-        r = self.dot_r * ss
-        dot_d = r * 2
-        gap = self.gap_px * ss
-        font = _load_ui_font(self.font_px * ss, bold=True)
-
-        bbox = draw.textbbox((0, 0), self.label_text, font=font)
-        text_w = bbox[2] - bbox[0]
-
-        total_content_w = dot_d + gap + text_w
-        start_x = (W - total_content_w) // 2
-
-        cx = start_x + r
-        cy = H // 2
-        draw.ellipse((cx - r, cy - r, cx + r, cy + r), fill=_hex_to_rgba(fg, 255))
-
-        ref_bbox = draw.textbbox((0, 0), "ÁgĐy", font=font)
-        ref_h = ref_bbox[3] - ref_bbox[1]
-        tx = start_x + dot_d + gap - bbox[0]
-        ty = (H - ref_h) // 2 - ref_bbox[1]
-        draw.text((tx, ty), self.label_text, fill=_hex_to_rgba(fg, 255), font=font)
-
-        smooth = img.resize((self.btn_w, self.btn_h), Image.Resampling.LANCZOS)
-        return ImageTk.PhotoImage(smooth)
+        self._redraw()
 
     def set_active(self, active: bool) -> None:
         self._active = active
-        self.configure(image=self._img_active if active else self._img_normal)
+        self._redraw()
+
+    def _on_enter(self, _e=None) -> None:
+        self._hovered = True
+        self._redraw()
+
+    def _on_leave(self, _e=None) -> None:
+        self._hovered = False
+        self._redraw()
+
+    def _redraw(self) -> None:
+        self.delete("all")
+        if self._active:
+            bg_col = "#0284c7"
+            fg_col = "#ffffff"
+            border_col = "#0284c7"
+        elif self._hovered:
+            bg_col = "#e0f2fe"
+            fg_col = "#0369a1"
+            border_col = "#7dd3fc"
+        else:
+            bg_col = "#ffffff"
+            fg_col = "#1e293b"
+            border_col = "#cbd5e1"
+
+        x1, y1 = 1, 1
+        x2, y2 = self.btn_w - 1, self.btn_h - 1
+        r = self.corner_radius
+        points = [
+            x1 + r, y1,
+            x1 + r, y1,
+            x2 - r, y1,
+            x2 - r, y1,
+            x2, y1,
+            x2, y1 + r,
+            x2, y1 + r,
+            x2, y2 - r,
+            x2, y2 - r,
+            x2, y2,
+            x2 - r, y2,
+            x2 - r, y2,
+            x1 + r, y2,
+            x1 + r, y2,
+            x1, y2,
+            x1, y2 - r,
+            x1, y2 - r,
+            x1, y1 + r,
+            x1, y1 + r,
+            x1, y1,
+        ]
+        self.create_polygon(points, smooth=True, fill=bg_col, outline=border_col, width=1)
+
+        dot_d = int(self.dot_r * 2)
+        gap = 6
+        text_w = self.font_obj.measure(self.label_text)
+        tot_w = dot_d + gap + text_w
+        cx_start = (self.btn_w - tot_w) / 2.0
+        cy = self.btn_h / 2.0
+
+        cx_dot = cx_start + self.dot_r
+        self.create_oval(
+            cx_dot - self.dot_r,
+            cy - self.dot_r,
+            cx_dot + self.dot_r,
+            cy + self.dot_r,
+            fill=fg_col,
+            outline="",
+        )
+
+        text_x = cx_start + dot_d + gap
+        self.create_text(
+            text_x,
+            cy,
+            text=self.label_text,
+            font=self.font_obj,
+            fill=fg_col,
+            anchor=tk.W,
+        )
 
 
 class ResponsiveFlowBar(tk.Frame):
@@ -1284,7 +1481,7 @@ class AnnotationEditor:
         self._redo_stack.clear()
 
     def _build_window(self) -> None:
-        from app.i18n import APP_NAME, get_editor_sizes, get_editor_tools, tr
+        from app.i18n import APP_NAME, APP_VERSION, get_editor_sizes, get_editor_tools, tr
         from app.tray import apply_window_icon
 
         self.win = tk.Toplevel(self.root)
@@ -1293,7 +1490,7 @@ class AnnotationEditor:
             self.win.attributes("-alpha", 0.0)
         except Exception:
             pass
-        self.win.title(APP_NAME)
+        self.win.title(f"{APP_NAME} v{APP_VERSION}")
         self.win.configure(bg=self.CANVAS_AREA_BG)
         self.win.resizable(True, True)
 
@@ -1577,9 +1774,21 @@ class AnnotationEditor:
         self.win.bind("<Control-S>", lambda _e: self.save_to_file())
         self.win.bind("<Control-c>", self._on_ctrl_c)
         self.win.bind("<Control-C>", self._on_ctrl_c)
+        if sys.platform == "darwin":
+            self.win.bind("<Command-z>", lambda _e: self.undo())
+            self.win.bind("<Command-Z>", lambda _e: self.undo())
+            self.win.bind("<Command-Shift-z>", lambda _e: self.redo())
+            self.win.bind("<Command-Shift-Z>", lambda _e: self.redo())
+            self.win.bind("<Command-y>", lambda _e: self.redo())
+            self.win.bind("<Command-Y>", lambda _e: self.redo())
+            self.win.bind("<Command-s>", lambda _e: self.save_to_file())
+            self.win.bind("<Command-S>", lambda _e: self.save_to_file())
+            self.win.bind("<Command-c>", self._on_ctrl_c)
+            self.win.bind("<Command-C>", self._on_ctrl_c)
         self.win.bind("<Delete>", self._on_delete_key)
         self.win.bind("<BackSpace>", self._on_delete_key)
         self.win.bind("<Return>", self._on_enter_key)
+        self.win.bind("<KP_Enter>", self._on_enter_key)
         self.win.bind("<Escape>", self._on_escape_key)
         self.win.protocol("WM_DELETE_WINDOW", self.close_editor)
 
@@ -2330,8 +2539,6 @@ class AnnotationEditor:
     def _on_enter_key(self, _event=None) -> None:
         if self._active_text_entry is not None:
             self._commit_active_text()
-            return
-        self.copy_and_finish()
 
     def _on_escape_key(self, _event=None) -> None:
         if self._active_text_entry is not None:

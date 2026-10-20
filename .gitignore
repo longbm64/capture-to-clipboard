@@ -18,3 +18,7 @@ assets/settings.json
 # OS metadata
 .DS_Store
 Thumbs.db
+
+# Log files
+*.log
+.app.log

@@ -7,7 +7,7 @@ from ctypes import wintypes
 import sys
 import threading
 import time
-from typing import Callable, Optional, Set
+from typing import Any, Callable, Optional, Set
 
 from pynput import keyboard
 
@@ -23,7 +23,8 @@ class _KBDLLHOOKSTRUCT(ctypes.Structure):
 
 
 _LRESULT = ctypes.c_ssize_t
-_HOOKPROC = ctypes.WINFUNCTYPE(
+_WIN_FUNCTYPE = getattr(ctypes, "WINFUNCTYPE", ctypes.CFUNCTYPE)
+_HOOKPROC = _WIN_FUNCTYPE(
     _LRESULT,
     ctypes.c_int,
     wintypes.WPARAM,
@@ -60,9 +61,15 @@ class GlobalHotkeyManager:
 
         self._listener: Optional[keyboard.Listener] = None
         self._ctrl_pressed = False
+        self._cmd_pressed = False
         self._alt_pressed = False
         self._shift_pressed = False
         self._active_digits: Set[int] = set()
+        self._overlay_cancel_handler: Optional[Callable[[], None]] = None
+
+    def set_overlay_cancel_handler(self, handler: Optional[Callable[[], None]]) -> None:
+        """Register a callback to cancel an active fullscreen overlay when ESC is pressed."""
+        self._overlay_cancel_handler = handler
 
     def set_prtsc_enabled(self, enabled: bool) -> None:
         """Dynamically enable or disable the PrtSc hotkey at runtime."""
@@ -112,6 +119,8 @@ class GlobalHotkeyManager:
             ):
                 self._start_pynput_listener()
         else:
+            if sys.platform == "darwin":
+                self._check_macos_accessibility()
             self._start_pynput_listener()
 
     def stop(self) -> None:
@@ -320,18 +329,87 @@ class GlobalHotkeyManager:
                 except Exception:
                     pass
 
+    @staticmethod
+    def _check_macos_accessibility() -> None:
+        try:
+            import ApplicationServices
+
+            if not ApplicationServices.AXIsProcessTrusted():
+                ApplicationServices.AXIsProcessTrustedWithOptions(
+                    {ApplicationServices.kAXTrustedCheckOptionPrompt: True}
+                )
+        except Exception:
+            pass
+
+    def _darwin_event_intercept(self, event_type, event):
+        """Intercept Cmd + 1 and Cmd + 2 at Quartz level on macOS.
+
+        Consumes the event (returns None) so active apps (Chrome tabs, Safari, Finder)
+        do not receive or conflict with the shortcut, giving priority to Capture To Clipboard.
+        """
+        try:
+            import Quartz
+
+            if event_type == Quartz.kCGEventKeyDown:
+                keycode = Quartz.CGEventGetIntegerValueField(
+                    event, Quartz.kCGKeyboardEventKeycode
+                )
+                # 53: Escape key on macOS
+                if keycode == 53 and self._overlay_cancel_handler is not None:
+                    try:
+                        self._overlay_cancel_handler()
+                    except Exception:
+                        pass
+                    return None
+
+            flags = Quartz.CGEventGetFlags(event)
+            is_cmd = bool(flags & Quartz.kCGEventFlagMaskCommand)
+            is_alt = bool(flags & Quartz.kCGEventFlagMaskAlternate)
+            is_shift = bool(flags & Quartz.kCGEventFlagMaskShift)
+            is_ctrl = bool(flags & Quartz.kCGEventFlagMaskControl)
+
+            if is_cmd and not is_alt and not is_shift and not is_ctrl:
+                keycode = Quartz.CGEventGetIntegerValueField(
+                    event, Quartz.kCGKeyboardEventKeycode
+                )
+                # 18: '1', 83: Numpad 1
+                if keycode in (18, 83):
+                    if event_type == Quartz.kCGEventKeyDown:
+                        self._trigger(1)
+                    return None
+                # 19: '2', 84: Numpad 2
+                elif keycode in (19, 84):
+                    if event_type == Quartz.kCGEventKeyDown:
+                        self._trigger(2)
+                    return None
+        except Exception:
+            pass
+        return event
+
     def _start_pynput_listener(self) -> None:
         if self._listener is not None:
             return
         try:
-            self._listener = keyboard.Listener(
-                on_press=self._on_pynput_press,
-                on_release=self._on_pynput_release,
-            )
+            kwargs = {
+                "on_press": self._on_pynput_press,
+                "on_release": self._on_pynput_release,
+            }
+            if sys.platform == "darwin":
+                kwargs["intercept"] = self._darwin_event_intercept
+
+            self._listener = keyboard.Listener(**kwargs)
             self._listener.daemon = True
             self._listener.start()
         except Exception as exc:
             print(f"[Warning] Không thể khởi tạo pynput keyboard listener: {exc}")
+
+    @staticmethod
+    def _is_cmd_key(key) -> bool:
+        return key in (
+            keyboard.Key.cmd,
+            getattr(keyboard.Key, "cmd_l", None),
+            getattr(keyboard.Key, "cmd_r", None),
+        )
 
     @staticmethod
     def _is_ctrl_key(key) -> bool:
@@ -391,6 +469,16 @@ class GlobalHotkeyManager:
         return None
 
     def _on_pynput_press(self, key) -> None:
+        if key == keyboard.Key.esc and self._overlay_cancel_handler is not None:
+            try:
+                self._overlay_cancel_handler()
+            except Exception:
+                pass
+            return
+
+        if self._is_cmd_key(key):
+            self._cmd_pressed = True
+            return
         if self._is_ctrl_key(key):
             self._ctrl_pressed = True
             return
@@ -410,16 +498,23 @@ class GlobalHotkeyManager:
             return
 
         digit = self._detect_digit_1_or_2(key)
-        if digit is not None and self._ctrl_pressed and not self._alt_pressed and not self._shift_pressed:
-            if digit in self._active_digits:
-                return
-            self._active_digits.add(digit)
-            if digit == 1 and not self._win32_ctrl1_ok:
-                self._trigger(1)
-            elif digit == 2 and not self._win32_ctrl2_ok:
-                self._trigger(2)
+        if digit is not None:
+            # On macOS, Command + 1 / Command + 2 is used instead of Ctrl + 1 / Ctrl + 2
+            mod_pressed = self._cmd_pressed if sys.platform == "darwin" else self._ctrl_pressed
+            if mod_pressed and not self._alt_pressed and not self._shift_pressed:
+                if digit in self._active_digits:
+                    return
+                self._active_digits.add(digit)
+                if digit == 1 and not self._win32_ctrl1_ok:
+                    self._trigger(1)
+                elif digit == 2 and not self._win32_ctrl2_ok:
+                    self._trigger(2)
 
     def _on_pynput_release(self, key) -> None:
+        if self._is_cmd_key(key):
+            self._cmd_pressed = False
+            self._active_digits.clear()
+            return
         if self._is_ctrl_key(key):
             self._ctrl_pressed = False
             self._active_digits.clear()

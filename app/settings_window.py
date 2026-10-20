@@ -9,6 +9,7 @@ Provides:
 
 from __future__ import annotations
 
+import sys
 import tkinter as tk
 from typing import Callable, Optional, Tuple
 
@@ -25,7 +26,7 @@ from app.tray import create_tray_icon_image
 
 
 class ModernCheckbox(tk.Frame):
-    """High-DPI anti-aliased custom checkbox on a soft daylight surface."""
+    """High-DPI anti-aliased custom vector checkbox on a soft daylight surface."""
 
     def __init__(
         self,
@@ -40,22 +41,17 @@ class ModernCheckbox(tk.Frame):
         self.checked = initial_checked
         self.on_toggle = on_toggle
         self.bg = bg
-        self.dpi_scale = _get_dpi_scale(parent)
-        self.box_size = max(26, int(round(22 * self.dpi_scale)))
-
-        self._img_unchecked = self._render_box(checked=False, hovered=False)
-        self._img_unchecked_hover = self._render_box(checked=False, hovered=True)
-        self._img_checked = self._render_box(checked=True, hovered=False)
-        self._img_checked_hover = self._render_box(checked=True, hovered=True)
+        self.box_size = 22
         self._hovered = False
 
-        self.box_lbl = tk.Label(
+        self.box_lbl = tk.Canvas(
             self,
+            width=self.box_size,
+            height=self.box_size,
             bg=bg,
             bd=0,
             highlightthickness=0,
             cursor="hand2",
-            image=self._img_checked if self.checked else self._img_unchecked,
         )
         self.box_lbl.pack(side=tk.LEFT, padx=(0, 12), pady=2)
 
@@ -92,39 +88,7 @@ class ModernCheckbox(tk.Frame):
             w.bind("<Enter>", self._on_enter)
             w.bind("<Leave>", self._on_leave)
 
-    def _render_box(self, checked: bool, hovered: bool) -> ImageTk.PhotoImage:
-        ss = 3
-        S = self.box_size * ss
-        img = Image.new("RGBA", (S, S), _hex_to_rgba(self.bg, 255))
-        draw = ImageDraw.Draw(img)
-
-        pad = int(round(2 * self.dpi_scale * ss))
-        radius = int(round(6 * self.dpi_scale * ss))
-
-        if checked:
-            fill_c = "#059669" if hovered else "#10b981"
-            border_c = "#047857"
-        else:
-            fill_c = "#e0f2fe" if hovered else "#f1f5f9"
-            border_c = "#0284c7" if hovered else "#94a3b8"
-
-        draw.rounded_rectangle(
-            (pad, pad, S - pad, S - pad),
-            radius=radius,
-            fill=_hex_to_rgba(fill_c, 255),
-            outline=_hex_to_rgba(border_c, 255),
-            width=max(2, int(round(1.5 * self.dpi_scale * ss))),
-        )
-
-        if checked:
-            w = max(4, int(round(2.4 * self.dpi_scale * ss)))
-            p1 = (int(S * 0.26), int(S * 0.52))
-            p2 = (int(S * 0.44), int(S * 0.70))
-            p3 = (int(S * 0.76), int(S * 0.30))
-            draw.line([p1, p2, p3], fill=(255, 255, 255, 255), width=w, joint="curve")
-
-        smooth = img.resize((self.box_size, self.box_size), Image.Resampling.LANCZOS)
-        return ImageTk.PhotoImage(smooth)
+        self._refresh_visual()
 
     def set_checked(self, checked: bool) -> None:
         self.checked = checked
@@ -144,11 +108,26 @@ class ModernCheckbox(tk.Frame):
         self._refresh_visual()
 
     def _refresh_visual(self) -> None:
+        self.box_lbl.delete("all")
+        S = self.box_size
+        r = 5
+        x1, y1 = 1, 1
+        x2, y2 = S - 1, S - 1
+        points = [
+            x1 + r, y1, x1 + r, y1, x2 - r, y1, x2 - r, y1,
+            x2, y1, x2, y1 + r, x2, y1 + r, x2, y2 - r, x2, y2 - r,
+            x2, y2, x2 - r, y2, x2 - r, y2, x1 + r, y2, x1 + r, y2,
+            x1, y2, x1, y2 - r, x1, y2 - r, x1, y1 + r, x1, y1 + r, x1, y1
+        ]
         if self.checked:
-            img = self._img_checked_hover if self._hovered else self._img_checked
+            fill_c = "#059669" if self._hovered else "#10b981"
+            border_c = "#047857"
+            self.box_lbl.create_polygon(points, smooth=True, fill=fill_c, outline=border_c, width=1)
+            self.box_lbl.create_line(5, 11, 9, 15, 17, 6, fill="white", width=2.4, capstyle=tk.ROUND, joinstyle=tk.ROUND)
         else:
-            img = self._img_unchecked_hover if self._hovered else self._img_unchecked
-        self.box_lbl.configure(image=img)
+            fill_c = "#e0f2fe" if self._hovered else "#f1f5f9"
+            border_c = "#0284c7" if self._hovered else "#cbd5e1"
+            self.box_lbl.create_polygon(points, smooth=True, fill=fill_c, outline=border_c, width=1)
 
 
 class SettingsAndGuideWindow:
@@ -193,9 +172,14 @@ class SettingsAndGuideWindow:
         self._prtsc_status_lbl: Optional[tk.Label] = None
         self._lang_btn_vi: Optional[ModernPillButton] = None
         self._lang_btn_en: Optional[ModernPillButton] = None
+        self._footer_logo_tk: Optional[ImageTk.PhotoImage] = None
+        self._guide_logo_tk: Optional[ImageTk.PhotoImage] = None
 
     def show(self) -> None:
         """Open or bring the Settings & Guide window to the front."""
+        from app.platform_utils import set_dock_icon_visible
+
+        set_dock_icon_visible(True)
         if self.win is not None:
             try:
                 if self.win.winfo_exists():
@@ -232,7 +216,7 @@ class SettingsAndGuideWindow:
             return False
 
     def _build_window(self, preserve_pos: Optional[ tuple[int, int] ] = None) -> None:
-        from app.i18n import APP_NAME
+        from app.i18n import APP_NAME, APP_VERSION
         from app.tray import apply_window_icon
 
         self._closing = False
@@ -243,7 +227,7 @@ class SettingsAndGuideWindow:
             win.attributes("-alpha", 0.0)
         except Exception:
             pass
-        win.title(APP_NAME)
+        win.title(f"{APP_NAME} v{APP_VERSION}")
         win.configure(bg=self.BG_MAIN)
         win.resizable(False, False)
 
@@ -252,6 +236,20 @@ class SettingsAndGuideWindow:
         win.bind("<Escape>", lambda _e: self.minimize_to_tray())
         win.bind("<Print>", lambda _e: self.on_trigger_ctrl1() if is_prtsc_enabled() else None)
         win.bind("<KeyRelease-Print>", lambda _e: self.on_trigger_ctrl1() if is_prtsc_enabled() else None)
+        if sys.platform == "darwin":
+            win.bind("<Command-KeyPress-1>", lambda _e: self._trigger_1_from_window())
+            win.bind("<Command-KeyPress-2>", lambda _e: self._trigger_2_from_window())
+            win.bind("<Command-Key-1>", lambda _e: self._trigger_1_from_window())
+            win.bind("<Command-Key-2>", lambda _e: self._trigger_2_from_window())
+            win.bind("<Command-w>", lambda _e: self.minimize_to_tray())
+            win.bind("<Command-W>", lambda _e: self.minimize_to_tray())
+        else:
+            win.bind("<Control-KeyPress-1>", lambda _e: self._trigger_1_from_window())
+            win.bind("<Control-KeyPress-2>", lambda _e: self._trigger_2_from_window())
+            win.bind("<Control-Key-1>", lambda _e: self._trigger_1_from_window())
+            win.bind("<Control-Key-2>", lambda _e: self._trigger_2_from_window())
+            win.bind("<Control-w>", lambda _e: self.minimize_to_tray())
+            win.bind("<Control-W>", lambda _e: self.minimize_to_tray())
         win.protocol("WM_DELETE_WINDOW", self.minimize_to_tray)
 
         win.update_idletasks()
@@ -282,7 +280,7 @@ class SettingsAndGuideWindow:
         win.bind("<Unmap>", self._on_window_unmap)
 
     def _populate_window_content(self, win: tk.Toplevel) -> None:
-        from app.i18n import get_language, get_shortcuts_guide, tr
+        from app.i18n import APP_NAME, get_language, get_shortcuts_guide, tr
 
         if self._body_frame is not None:
             try:
@@ -297,6 +295,8 @@ class SettingsAndGuideWindow:
         body = tk.Frame(win, bg=self.BG_MAIN, padx=20, pady=14)
         body.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
         self._body_frame = body
+
+        dpi_scale = _get_dpi_scale(win)
 
         # --- Card 1: Settings (Auto-start, PrtSc key & Language) ---
         card_setting_border = tk.Frame(body, bg=self.BORDER_SOFT, padx=1, pady=1)
@@ -428,15 +428,29 @@ class SettingsAndGuideWindow:
         self._lang_btn_en.set_active(cur_lang == "en")
 
         # --- Card 2: Shortcuts & Usage Guide Table ---
+        guide_title_frame = tk.Frame(body, bg=self.BG_MAIN)
+        guide_title_frame.pack(side=tk.TOP, fill=tk.X, pady=(2, 6))
+
+        micro_logo_px = max(16, int(round(16 * dpi_scale)))
+        self._guide_logo_tk = ImageTk.PhotoImage(create_tray_icon_image(micro_logo_px))
+        micro_logo_lbl = tk.Label(
+            guide_title_frame,
+            image=self._guide_logo_tk,
+            bg=self.BG_MAIN,
+            bd=0,
+            highlightthickness=0,
+        )
+        micro_logo_lbl.pack(side=tk.LEFT, padx=(0, 6))
+
         guide_title = tk.Label(
-            body,
+            guide_title_frame,
             text=tr("guide_section_title"),
             font=("Roboto", 10, "bold"),
             fg="#0369a1",
             bg=self.BG_MAIN,
             anchor=tk.W,
         )
-        guide_title.pack(side=tk.TOP, anchor=tk.W, pady=(2, 6))
+        guide_title.pack(side=tk.LEFT)
 
         # Unified table grid: bg=BORDER_SOFT with 1px cell spacing creates crisp table gridlines
         table_grid = tk.Frame(body, bg=self.BORDER_SOFT)
@@ -535,6 +549,79 @@ class SettingsAndGuideWindow:
             desc_lbl.pack(fill=tk.X, expand=True)
             self._desc_labels.append(desc_lbl)
 
+        # --- Card 3: Footer with App Logo, Version & Clickable KAHUB PLATFORM Link ---
+        footer_border = tk.Frame(body, bg=self.BORDER_SOFT, padx=1, pady=1)
+        footer_border.pack(side=tk.TOP, fill=tk.X, pady=(12, 0))
+
+        footer_card = tk.Frame(footer_border, bg=self.BG_CARD, padx=12, pady=7)
+        footer_card.pack(fill=tk.X)
+
+        # Left: App Logo + Name + Version
+        left_frame = tk.Frame(footer_card, bg=self.BG_CARD)
+        left_frame.pack(side=tk.LEFT)
+
+        footer_logo_px = max(24, int(round(24 * dpi_scale)))
+        self._footer_logo_tk = ImageTk.PhotoImage(create_tray_icon_image(footer_logo_px))
+        footer_logo_lbl = tk.Label(
+            left_frame,
+            image=self._footer_logo_tk,
+            bg=self.BG_CARD,
+            bd=0,
+            highlightthickness=0,
+        )
+        footer_logo_lbl.pack(side=tk.LEFT, padx=(0, 8))
+
+        app_title_lbl = tk.Label(
+            left_frame,
+            text=f"{APP_NAME} v{APP_VERSION}",
+            font=("Roboto", 9, "bold"),
+            fg=self.TEXT_PRIMARY,
+            bg=self.BG_CARD,
+        )
+        app_title_lbl.pack(side=tk.LEFT)
+
+        # Right: Clickable KAHUB PLATFORM Link (opens https://kahub.vn)
+        import webbrowser
+
+        def _open_kahub(_event=None):
+            try:
+                webbrowser.open_new_tab("https://kahub.vn")
+            except Exception:
+                pass
+
+        dev_badge = tk.Frame(
+            footer_card,
+            bg="#e0f2fe",
+            padx=10,
+            pady=4,
+            cursor="hand2",
+        )
+        dev_badge.pack(side=tk.RIGHT)
+
+        dev_lbl = tk.Label(
+            dev_badge,
+            text=f"⚡ {tr('footer_developer')} ↗",
+            font=("Roboto", 9, "bold"),
+            fg="#0284c7",
+            bg="#e0f2fe",
+            cursor="hand2",
+        )
+        dev_lbl.pack(side=tk.LEFT)
+
+        def _on_enter(_event):
+            dev_badge.configure(bg="#bae6fd")
+            dev_lbl.configure(bg="#bae6fd", fg="#0369a1")
+
+        def _on_leave(_event):
+            dev_badge.configure(bg="#e0f2fe")
+            dev_lbl.configure(bg="#e0f2fe", fg="#0284c7")
+
+        for w in (dev_badge, dev_lbl):
+            w.bind("<Button-1>", _open_kahub)
+            w.bind("<Enter>", _on_enter)
+            w.bind("<Leave>", _on_leave)
+
+
     def _on_table_configure(self, event: tk.Event) -> None:
         if event.widget is not self._table_grid or event.width <= 100:
             return
@@ -624,6 +711,8 @@ class SettingsAndGuideWindow:
 
     def minimize_to_tray(self) -> None:
         """Close/hide the window to the System Tray when clicking X or -."""
+        from app.platform_utils import set_dock_icon_visible
+
         was_open = False
         if self.win is not None:
             try:
@@ -631,6 +720,7 @@ class SettingsAndGuideWindow:
             except Exception:
                 was_open = False
         self.close(destroy=False)
+        set_dock_icon_visible(False)
         if was_open and self.on_minimized_to_tray is not None:
             self.on_minimized_to_tray()
 
@@ -642,13 +732,19 @@ class SettingsAndGuideWindow:
         self.close(destroy=False)
         self.on_trigger_ctrl2()
 
+    _trigger_fast_capture = _trigger_1_from_window
+    _trigger_draw_capture = _trigger_2_from_window
+
     def close(self, destroy: bool = False) -> None:
+        from app.platform_utils import set_dock_icon_visible
+
         self._closing = True
         if self.win is not None:
             if not destroy:
                 try:
                     if self.win.winfo_exists():
                         self.win.withdraw()
+                        set_dock_icon_visible(False)
                         return
                 except Exception:
                     pass
@@ -658,3 +754,4 @@ class SettingsAndGuideWindow:
                 pass
             self.win = None
             self._body_frame = None
+        set_dock_icon_visible(False)

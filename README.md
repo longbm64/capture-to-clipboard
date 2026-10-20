@@ -1,13 +1,20 @@
-# Capture To Clipboard
+<p align="center">
+  <img src="assets/logo.png" width="128" height="128" alt="Capture To Clipboard Logo" />
+</p>
 
-Ứng dụng chụp vùng màn hình sắc nét chất lượng cao (HD) và ghi chú trực tiếp, hỗ trợ đa nền tảng (**Windows**, **macOS**, **Linux**) và **song ngữ Tiếng Việt / Tiếng Anh** (mặc định Tiếng Việt, tự động ghi nhớ ngôn ngữ đã chọn).
+<h1 align="center">Capture To Clipboard</h1>
+
+<p align="center">
+  <b>Ứng dụng chụp vùng màn hình sắc nét chất lượng cao (HD) & Ghi chú trực tiếp vào bộ nhớ tạm</b><br />
+  Hỗ trợ macOS, Windows, Linux • Song ngữ Tiếng Việt & Tiếng Anh
+</p>
 
 ---
 
 ## 1. Tính năng nổi bật
 
-- **Chụp nhanh vào Clipboard (`Ctrl + 1` hoặc `PrtSc`)**: Quét chọn vùng màn hình bất kỳ và tự động lưu ảnh chất lượng cao vào bộ nhớ tạm để dán ngay (`Ctrl + V` / `Cmd + V`) vào Zalo, Messenger, Slack, Word, Email, v.v.
-- **Chụp & Ghi chú (`Ctrl + 2`)**: Quét chọn vùng màn hình và mở bảng công cụ vẽ mũi tên, khung chữ nhật, bút dạ quang, làm mờ, chèn chữ (**Roboto**), hoàn tác/xóa tất cả, lưu thành file `.PNG` hoặc copy thẳng vào Clipboard.
+- **Chụp nhanh vào Clipboard (`Cmd + 1` trên macOS / `Ctrl + 1` trên Windows & Linux / `PrtSc`)**: Quét chọn vùng màn hình bất kỳ và tự động lưu ảnh chất lượng cao vào bộ nhớ tạm để dán ngay (`Cmd + V` / `Ctrl + V`) vào Zalo, Messenger, Slack, Word, Email, v.v.
+- **Chụp & Ghi chú (`Cmd + 2` trên macOS / `Ctrl + 2` trên Windows & Linux)**: Quét chọn vùng màn hình và mở bảng công cụ vẽ mũi tên, khung chữ nhật, bút dạ quang, làm mờ, chèn chữ (**Roboto**), hoàn tác/xóa tất cả, lưu thành file `.PNG` hoặc copy thẳng vào Clipboard.
 - **Song ngữ Tiếng Việt & Tiếng Anh**: Chuyển đổi tức thì ngay trong cửa sổ cài đặt, tự động lưu lựa chọn vào `settings.json` cho các lần mở tiếp theo.
 - **Tự động thu xuống System Tray khi bấm `X` hoặc `-`**: Giữ màn hình làm việc gọn gàng, luôn sẵn sàng nhận phím tắt.
 - **Khởi động cùng máy tính**: Tùy chọn bật/tắt tự động khởi chạy thu gọn trên khay hệ thống (System Tray / Menu Bar).
@@ -16,14 +23,14 @@
 
 ## 2. Bảng phím tắt & Thao tác
 
-| Phím tắt | Chức năng | Mô tả thao tác |
-| :--- | :--- | :--- |
-| **`Ctrl + 1`** / **`PrtSc`** | Chụp & Sao chép ngay | Kéo chọn vùng màn hình $\rightarrow$ tự động lưu ảnh vào bộ nhớ tạm để dán ngay (`Ctrl + V`). |
-| **`Ctrl + 2`** | Chụp & Ghi chú trên ảnh | Kéo chọn vùng màn hình $\rightarrow$ mở cửa sổ vẽ mũi tên, khung vuông, viết chữ rồi Copy hoặc Lưu file. |
-| **`Enter`** / **`Ctrl + C`** | Hoàn tất & Sao chép | Copy ngay bức ảnh đã vẽ ghi chú vào Clipboard và đóng cửa sổ chỉnh sửa. |
-| **`Ctrl + S`** | Lưu thành file ảnh | Xuất bức ảnh đã ghi chú ra file `.PNG`, `.JPG` hoặc `.WebP` độ phân giải cao. |
-| **`Ctrl + Z`** / **`Delete`** | Hoàn tác / Xóa nét vẽ | Quay lại bước trước đó hoặc xóa nét đang chọn. |
-| **`ESC`** / **Chuột phải** | Hủy thao tác | Thoát nhanh màn hình chọn vùng chụp hoặc thu gọn cửa sổ xuống khay hệ thống. |
+| Phím tắt (macOS) | Phím tắt (Windows/Linux) | Chức năng | Mô tả thao tác |
+| :--- | :--- | :--- | :--- |
+| **`Cmd + 1`** | **`Ctrl + 1`** / **`PrtSc`** | Chụp & Sao chép ngay | Kéo chọn vùng màn hình $\rightarrow$ tự động lưu ảnh vào bộ nhớ tạm để dán ngay (`Cmd + V` / `Ctrl + V`). |
+| **`Cmd + 2`** | **`Ctrl + 2`** | Chụp & Ghi chú trên ảnh | Kéo chọn vùng màn hình $\rightarrow$ mở cửa sổ vẽ mũi tên, khung vuông, viết chữ rồi Copy hoặc Lưu file. |
+| **`Cmd + C`** | **`Ctrl + C`** | Hoàn tất & Sao chép | Copy ngay bức ảnh đã vẽ ghi chú vào Clipboard và đóng cửa sổ chỉnh sửa. |
+| **`Cmd + S`** | **`Ctrl + S`** | Lưu thành file ảnh | Xuất bức ảnh đã ghi chú ra file `.PNG`, `.JPG` hoặc `.WebP` độ phân giải cao. |
+| **`Cmd + Z`** / **`Delete`** | **`Ctrl + Z`** / **`Delete`** | Hoàn tác / Xóa nét vẽ | Quay lại bước trước đó hoặc xóa nét đang chọn. |
+| **`ESC`** / **Chuột phải** | **`ESC`** / **Chuột phải** | Hủy thao tác | Thoát nhanh màn hình chọn vùng chụp hoặc thu gọn cửa sổ xuống khay hệ thống. |
 
 ---
 
@@ -88,7 +95,7 @@ chmod +x build_macos.sh
 > **Lưu ý cấp quyền trên macOS lần đầu chạy:**
 > Vào **System Settings (Cài đặt hệ thống) $\rightarrow$ Privacy & Security (Quyền riêng tư & Bảo mật)**:
 > - **Screen & System Audio Recording (Ghi màn hình):** Bật cho `Capture To Clipboard` để cho phép chụp vùng màn hình.
-> - **Accessibility (Trợ năng):** Bật cho `Capture To Clipboard` để nhận phím tắt toàn cục `Ctrl + 1`, `Ctrl + 2`, `PrtSc`.
+> - **Accessibility (Trợ năng):** Bật cho `Capture To Clipboard` để nhận phím tắt toàn cục `Cmd + 1`, `Cmd + 2`.
 
 ---
 
@@ -109,3 +116,12 @@ Dự án đã tích hợp sẵn workflow `.github/workflows/build-macos-windows.
 2. Sau khi chạy xong, vào chi tiết lượt chạy trong tab **Actions** để tải về:
    - **`CaptureToClipboard-macOS-Installer`** (gồm `CaptureToClipboard-macOS.dmg` và `CaptureToClipboard-macOS-App.zip`).
    - **`CaptureToClipboard-Windows-Portable`** (gồm `CaptureToClipboard.exe`).
+
+---
+
+## 5. Thông tin Phát triển & Bản quyền
+
+- **Phiên bản hiện tại:** `v1.3.4` (Xem chi tiết tại [CHANGELOG.md](CHANGELOG.md))
+- **Đơn vị phát triển:** [**KAHUB PLATFORM** (kahub.vn)](https://kahub.vn)
+- **Chính sách phiên bản:** Mọi thay đổi mã nguồn, tính năng, sửa lỗi hoặc push code đều được đánh số phiên bản theo chuẩn SemVer và đồng bộ tự động trên thanh tiêu đề cửa sổ, giao diện và gói phát hành.
+

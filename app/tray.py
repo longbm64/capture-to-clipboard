@@ -188,13 +188,28 @@ def create_tray_icon_image(size: int = 64) -> Image.Image:
     if size in _ICON_CACHE:
         return _ICON_CACHE[size].copy()
 
-    if 512 not in _ICON_CACHE:
-        _ICON_CACHE[512] = _create_master_logo(512)
+    if 1024 not in _ICON_CACHE:
+        from app.platform_utils import get_bundled_assets_dir
 
-    master = _ICON_CACHE[512]
+        master_img = None
+        for cand in (
+            get_bundled_assets_dir() / "logo.png",
+            Path(__file__).resolve().parent.parent / "assets" / "logo.png",
+        ):
+            if cand.exists():
+                try:
+                    master_img = Image.open(cand).convert("RGBA")
+                    break
+                except Exception:
+                    pass
+        if master_img is None:
+            master_img = _create_master_logo(1024)
+        _ICON_CACHE[1024] = master_img
+
+    master = _ICON_CACHE[1024]
     resized = (
         master.copy()
-        if size == 512
+        if size == master.width and size == master.height
         else master.resize((size, size), Image.Resampling.LANCZOS)
     )
     _ICON_CACHE[size] = resized
@@ -224,18 +239,21 @@ def ensure_logo_assets() -> Path:
 
     if not ico_path.exists() or not png_path.exists():
         logo_256 = create_tray_icon_image(256)
-        logo_256.save(png_path, format="PNG")
-        logo_256.save(
-            ico_path,
-            format="ICO",
-            bitmap_format="bmp",
-            sizes=[(16, 16), (24, 24), (32, 32), (48, 48), (64, 64), (128, 128), (256, 256)],
-        )
-        try:
-            logo_512 = create_tray_icon_image(512)
-            logo_512.save(icns_path, format="ICNS")
-        except Exception:
-            pass
+        if not png_path.exists():
+            logo_256.save(png_path, format="PNG")
+        if not ico_path.exists():
+            logo_256.save(
+                ico_path,
+                format="ICO",
+                bitmap_format="bmp",
+                sizes=[(16, 16), (24, 24), (32, 32), (48, 48), (64, 64), (128, 128), (256, 256)],
+            )
+        if not icns_path.exists():
+            try:
+                logo_512 = create_tray_icon_image(512)
+                logo_512.save(icns_path, format="ICNS")
+            except Exception:
+                pass
     _CACHED_ICO_PATH = ico_path
     return ico_path
 
@@ -248,6 +266,27 @@ def apply_window_icon(win) -> None:
     """Apply the bright app logo to a Tkinter Tk or Toplevel window titlebar & taskbar."""
     import sys
     from PIL import ImageTk
+
+    if sys.platform == "darwin":
+        try:
+            from AppKit import NSApplication, NSImage
+            from app.platform_utils import get_bundled_assets_dir
+
+            app = NSApplication.sharedApplication()
+            for cand in (
+                get_bundled_assets_dir() / "logo.icns",
+                get_bundled_assets_dir() / "logo.png",
+                Path(__file__).resolve().parent.parent / "assets" / "logo.icns",
+                Path(__file__).resolve().parent.parent / "assets" / "logo.png",
+            ):
+                if cand.exists():
+                    ns_img = NSImage.alloc().initWithContentsOfFile_(str(cand.resolve()))
+                    if ns_img:
+                        app.setApplicationIconImage_(ns_img)
+                        break
+        except Exception:
+            pass
+        return
 
     try:
         ico_path = ensure_logo_assets()

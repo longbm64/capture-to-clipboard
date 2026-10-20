@@ -34,6 +34,7 @@ from app.platform_utils import (
     copy_image_to_clipboard,
     enable_dpi_awareness,
     enhance_image_quality,
+    set_dock_icon_visible,
 )
 from app.settings_window import SettingsAndGuideWindow
 from app.tray import (
@@ -67,9 +68,13 @@ class CaptureApp:
         self.root.withdraw()
         self.root.title(APP_NAME)
         apply_window_icon(self.root)
+        set_dock_icon_visible(False)
+        self.root.after(50, lambda: set_dock_icon_visible(False))
+        self.root.after(200, lambda: set_dock_icon_visible(False))
 
         self.event_queue: "queue.Queue[Tuple[str, bool]]" = queue.Queue()
         self._overlay_active = False
+        self._active_overlay: Optional[RegionSelectorOverlay] = None
         self._active_editor: Optional[AnnotationEditor] = None
         self._shutting_down = False
 
@@ -111,18 +116,7 @@ class CaptureApp:
         except Exception:
             pass
 
-        toast_delay = 1200 if minimized else 200
-        self.root.after(
-            toast_delay,
-            lambda: ToastNotification.show(
-                self.root,
-                tr("toast_ready"),
-                success=True,
-                duration_ms=2800,
-            ),
-        )
-
-        self.root.after(30, self._poll_events)
+        self.root.after(16, self._poll_events)
         self.root.mainloop()
 
     def _poll_events(self) -> None:
@@ -150,54 +144,41 @@ class CaptureApp:
                         self.settings_window.show()
                     elif action == "toggle_autostart":
                         new_state = not is_autostart_enabled()
-                        ok, msg = set_autostart_enabled(new_state)
+                        ok, _msg = set_autostart_enabled(new_state)
                         self.tray.refresh_menu()
-                        ToastNotification.show(
-                            self.root,
-                            msg,
-                            success=ok,
-                            duration_ms=2000,
-                        )
                     elif action == "capture_clipboard":
                         delay = 180 if from_tray else 10
                         self.root.after(delay, lambda: self._begin_capture(mode=1))
                     elif action == "capture_draw":
                         delay = 180 if from_tray else 10
                         self.root.after(delay, lambda: self._begin_capture(mode=2))
+                    elif action == "cancel_overlay":
+                        if self._active_overlay is not None:
+                            try:
+                                self._active_overlay._cancel()
+                            except Exception:
+                                pass
+                            self._active_overlay = None
                 except Exception as exc:
                     print(f"[Error] Event '{action}' failed: {exc}")
         except queue.Empty:
             pass
 
         if not self._shutting_down:
-            self.root.after(30, self._poll_events)
+            self.root.after(16, self._poll_events)
 
     def _on_autostart_changed_from_ui(self, enabled: bool) -> None:
-        from app.i18n import tr
-
         self.tray.refresh_menu()
-        msg = tr("toast_autostart_on") if enabled else tr("toast_autostart_off")
-        ToastNotification.show(self.root, msg, success=True, duration_ms=1800)
 
     def _on_prtsc_changed_from_ui(self, enabled: bool) -> None:
-        from app.i18n import tr
-
         self.hotkeys.set_prtsc_enabled(enabled)
-        msg = tr("toast_prtsc_on") if enabled else tr("toast_prtsc_off")
-        ToastNotification.show(self.root, msg, success=True, duration_ms=1800)
 
     def _on_language_changed_from_ui(self, _lang: str) -> None:
         self.tray.refresh_menu()
 
     def _on_window_minimized_to_tray(self) -> None:
-        from app.i18n import tr
-
-        ToastNotification.show(
-            self.root,
-            tr("toast_minimized_tray"),
-            success=True,
-            duration_ms=1800,
-        )
+        if not (self._active_editor and self._active_editor.win and self._active_editor.win.winfo_exists()):
+            set_dock_icon_visible(False)
 
     def _begin_capture(self, mode: int) -> None:
         if self._overlay_active or self._shutting_down:
@@ -226,11 +207,29 @@ class CaptureApp:
             screenshot, geom = capture_virtual_screen(self.root)
         except Exception as exc:
             self._overlay_active = False
+            if sys.platform == "darwin":
+                try:
+                    import subprocess
+
+                    subprocess.Popen(
+                        [
+                            "open",
+                            "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture",
+                        ],
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL,
+                    )
+                except Exception:
+                    pass
+                err_text = "macOS cần quyền Ghi màn hình (Screen Recording)! Đang mở Cài đặt để bạn bật cho phép."
+            else:
+                err_text = tr("toast_capture_err", err=exc)
+
             ToastNotification.show(
                 self.root,
-                tr("toast_capture_err", err=exc),
+                err_text,
                 success=False,
-                duration_ms=3000,
+                duration_ms=4500,
             )
             return
 
@@ -243,18 +242,33 @@ class CaptureApp:
             accent = "#7c3aed"
             on_done = self._handle_open_editor
 
-        RegionSelectorOverlay(
+        def _on_overlay_selected(cropped_img: Image.Image) -> None:
+            self.hotkeys.set_overlay_cancel_handler(None)
+            self._active_overlay = None
+            on_done(cropped_img)
+
+        def _on_overlay_cancel() -> None:
+            self.hotkeys.set_overlay_cancel_handler(None)
+            self._active_overlay = None
+            self._on_overlay_cancelled()
+
+        overlay = RegionSelectorOverlay(
             root=self.root,
             screenshot=screenshot,
             geometry=geom,
             mode_title=mode_title,
             accent_color=accent,
-            on_selected=on_done,
-            on_cancel=self._on_overlay_cancelled,
+            on_selected=_on_overlay_selected,
+            on_cancel=_on_overlay_cancel,
+        )
+        self._active_overlay = overlay
+        self.hotkeys.set_overlay_cancel_handler(
+            lambda: self.event_queue.put(("cancel_overlay", False))
         )
 
     def _on_overlay_cancelled(self) -> None:
         self._overlay_active = False
+        self._active_overlay = None
 
     def _handle_instant_clipboard(self, cropped_img: Image.Image) -> None:
         from app.i18n import tr
@@ -289,6 +303,7 @@ class CaptureApp:
         logical_size = cropped_img.size
         hd_img = enhance_image_quality(cropped_img, upscale_hd=True)
 
+        set_dock_icon_visible(True)
         self._active_editor = AnnotationEditor(
             root=self.root,
             image=hd_img,
@@ -301,6 +316,8 @@ class CaptureApp:
         from app.i18n import tr
 
         self._active_editor = None
+        if not self.settings_window.is_visible():
+            set_dock_icon_visible(False)
         ok, msg = copy_image_to_clipboard(edited_img)
         if ok:
             ToastNotification.show(
@@ -319,6 +336,8 @@ class CaptureApp:
 
     def _on_editor_closed(self) -> None:
         self._active_editor = None
+        if not self.settings_window.is_visible():
+            set_dock_icon_visible(False)
 
     def shutdown(self) -> None:
         if self._shutting_down:

@@ -1,3 +1,3 @@
-"""Capture-to-Clipboard Cross-Platform Package."""
+__version__ = "1.3.5"
+APP_VERSION = __version__
 
-__version__ = "1.2.0"
