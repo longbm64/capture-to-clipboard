@@ -22,6 +22,7 @@ from app.autostart import (
     set_prtsc_enabled,
 )
 from app.editor import ModernPillButton, _get_dpi_scale, _hex_to_rgba
+from app.i18n import APP_NAME, APP_VERSION
 from app.tray import create_tray_icon_image
 
 
@@ -216,7 +217,6 @@ class SettingsAndGuideWindow:
             return False
 
     def _build_window(self, preserve_pos: Optional[ tuple[int, int] ] = None) -> None:
-        from app.i18n import APP_NAME, APP_VERSION
         from app.tray import apply_window_icon
 
         self._closing = False
@@ -237,19 +237,15 @@ class SettingsAndGuideWindow:
         win.bind("<Print>", lambda _e: self.on_trigger_ctrl1() if is_prtsc_enabled() else None)
         win.bind("<KeyRelease-Print>", lambda _e: self.on_trigger_ctrl1() if is_prtsc_enabled() else None)
         if sys.platform == "darwin":
-            win.bind("<Command-KeyPress-1>", lambda _e: self._trigger_1_from_window())
-            win.bind("<Command-KeyPress-2>", lambda _e: self._trigger_2_from_window())
-            win.bind("<Command-Key-1>", lambda _e: self._trigger_1_from_window())
-            win.bind("<Command-Key-2>", lambda _e: self._trigger_2_from_window())
             win.bind("<Command-w>", lambda _e: self.minimize_to_tray())
             win.bind("<Command-W>", lambda _e: self.minimize_to_tray())
         else:
-            win.bind("<Control-KeyPress-1>", lambda _e: self._trigger_1_from_window())
-            win.bind("<Control-KeyPress-2>", lambda _e: self._trigger_2_from_window())
-            win.bind("<Control-Key-1>", lambda _e: self._trigger_1_from_window())
-            win.bind("<Control-Key-2>", lambda _e: self._trigger_2_from_window())
             win.bind("<Control-w>", lambda _e: self.minimize_to_tray())
             win.bind("<Control-W>", lambda _e: self.minimize_to_tray())
+        win.bind("<Control-KeyPress-1>", lambda _e: self._trigger_1_from_window())
+        win.bind("<Control-KeyPress-2>", lambda _e: self._trigger_2_from_window())
+        win.bind("<Control-Key-1>", lambda _e: self._trigger_1_from_window())
+        win.bind("<Control-Key-2>", lambda _e: self._trigger_2_from_window())
         win.protocol("WM_DELETE_WINDOW", self.minimize_to_tray)
 
         win.update_idletasks()
@@ -280,7 +276,7 @@ class SettingsAndGuideWindow:
         win.bind("<Unmap>", self._on_window_unmap)
 
     def _populate_window_content(self, win: tk.Toplevel) -> None:
-        from app.i18n import APP_NAME, get_language, get_shortcuts_guide, tr
+        from app.i18n import get_language, get_shortcuts_guide, tr
 
         if self._body_frame is not None:
             try:

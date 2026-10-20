@@ -13,8 +13,8 @@
 
 ## 1. Tính năng nổi bật
 
-- **Chụp nhanh vào Clipboard (`Cmd + 1` trên macOS / `Ctrl + 1` trên Windows & Linux / `PrtSc`)**: Quét chọn vùng màn hình bất kỳ và tự động lưu ảnh chất lượng cao vào bộ nhớ tạm để dán ngay (`Cmd + V` / `Ctrl + V`) vào Zalo, Messenger, Slack, Word, Email, v.v.
-- **Chụp & Ghi chú (`Cmd + 2` trên macOS / `Ctrl + 2` trên Windows & Linux)**: Quét chọn vùng màn hình và mở bảng công cụ vẽ mũi tên, khung chữ nhật, bút dạ quang, làm mờ, chèn chữ (**Roboto**), hoàn tác/xóa tất cả, lưu thành file `.PNG` hoặc copy thẳng vào Clipboard.
+- **Chụp nhanh vào Clipboard (`Ctrl + 1` / `PrtSc`)**: Quét chọn vùng màn hình bất kỳ và tự động lưu ảnh chất lượng cao vào bộ nhớ tạm để dán ngay (`Cmd + V` trên Mac / `Ctrl + V` trên Win) vào Zalo, Messenger, Slack, Word, Email, v.v.
+- **Chụp & Ghi chú (`Ctrl + 2`)**: Quét chọn vùng màn hình và mở bảng công cụ vẽ mũi tên, khung chữ nhật, bút dạ quang, làm mờ, chèn chữ (**Roboto**), hoàn tác/xóa tất cả, lưu thành file `.PNG` hoặc copy thẳng vào Clipboard.
 - **Song ngữ Tiếng Việt & Tiếng Anh**: Chuyển đổi tức thì ngay trong cửa sổ cài đặt, tự động lưu lựa chọn vào `settings.json` cho các lần mở tiếp theo.
 - **Tự động thu xuống System Tray khi bấm `X` hoặc `-`**: Giữ màn hình làm việc gọn gàng, luôn sẵn sàng nhận phím tắt.
 - **Khởi động cùng máy tính**: Tùy chọn bật/tắt tự động khởi chạy thu gọn trên khay hệ thống (System Tray / Menu Bar).
@@ -25,8 +25,8 @@
 
 | Phím tắt (macOS) | Phím tắt (Windows/Linux) | Chức năng | Mô tả thao tác |
 | :--- | :--- | :--- | :--- |
-| **`Cmd + 1`** | **`Ctrl + 1`** / **`PrtSc`** | Chụp & Sao chép ngay | Kéo chọn vùng màn hình $\rightarrow$ tự động lưu ảnh vào bộ nhớ tạm để dán ngay (`Cmd + V` / `Ctrl + V`). |
-| **`Cmd + 2`** | **`Ctrl + 2`** | Chụp & Ghi chú trên ảnh | Kéo chọn vùng màn hình $\rightarrow$ mở cửa sổ vẽ mũi tên, khung vuông, viết chữ rồi Copy hoặc Lưu file. |
+| **`Ctrl + 1`** | **`Ctrl + 1`** / **`PrtSc`** | Chụp & Sao chép ngay | Kéo chọn vùng màn hình $\rightarrow$ tự động lưu ảnh vào bộ nhớ tạm để dán ngay (`Cmd + V` / `Ctrl + V`). |
+| **`Ctrl + 2`** | **`Ctrl + 2`** | Chụp & Ghi chú trên ảnh | Kéo chọn vùng màn hình $\rightarrow$ mở cửa sổ vẽ mũi tên, khung vuông, viết chữ rồi Copy hoặc Lưu file. |
 | **`Cmd + C`** | **`Ctrl + C`** | Hoàn tất & Sao chép | Copy ngay bức ảnh đã vẽ ghi chú vào Clipboard và đóng cửa sổ chỉnh sửa. |
 | **`Cmd + S`** | **`Ctrl + S`** | Lưu thành file ảnh | Xuất bức ảnh đã ghi chú ra file `.PNG`, `.JPG` hoặc `.WebP` độ phân giải cao. |
 | **`Cmd + Z`** / **`Delete`** | **`Ctrl + Z`** / **`Delete`** | Hoàn tác / Xóa nét vẽ | Quay lại bước trước đó hoặc xóa nét đang chọn. |
@@ -95,7 +95,7 @@ chmod +x build_macos.sh
 > **Lưu ý cấp quyền trên macOS lần đầu chạy:**
 > Vào **System Settings (Cài đặt hệ thống) $\rightarrow$ Privacy & Security (Quyền riêng tư & Bảo mật)**:
 > - **Screen & System Audio Recording (Ghi màn hình):** Bật cho `Capture To Clipboard` để cho phép chụp vùng màn hình.
-> - **Accessibility (Trợ năng):** Bật cho `Capture To Clipboard` để nhận phím tắt toàn cục `Cmd + 1`, `Cmd + 2`.
+> - **Accessibility (Trợ năng):** Bật cho `Capture To Clipboard` để nhận phím tắt toàn cục `Ctrl + 1`, `Ctrl + 2`.
 
 ---
 

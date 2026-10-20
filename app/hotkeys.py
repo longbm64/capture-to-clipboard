@@ -57,7 +57,7 @@ class GlobalHotkeyManager:
         self._win32_ctrl2_ok = False
         self._win32_prtsc_ok = False
         self._win32_ll_hook_ok = False
-        self._ll_hook_proc_ref: Optional[_HOOKPROC] = None
+        self._ll_hook_proc_ref: Optional[Any] = None
 
         self._listener: Optional[keyboard.Listener] = None
         self._ctrl_pressed = False
@@ -342,10 +342,12 @@ class GlobalHotkeyManager:
             pass
 
     def _darwin_event_intercept(self, event_type, event):
-        """Intercept Cmd + 1 and Cmd + 2 at Quartz level on macOS.
+        """Intercept Ctrl + 1 and Ctrl + 2 at Quartz level on macOS.
 
-        Consumes the event (returns None) so active apps (Chrome tabs, Safari, Finder)
-        do not receive or conflict with the shortcut, giving priority to Capture To Clipboard.
+        Consumes the event (returns None) so active apps do not receive
+        or conflict with the shortcut, giving priority to Capture To Clipboard.
+        Cmd + 1 and Cmd + 2 are preserved untouched for web browsers (tab switching)
+        and native macOS applications.
         """
         try:
             import Quartz
@@ -368,7 +370,8 @@ class GlobalHotkeyManager:
             is_shift = bool(flags & Quartz.kCGEventFlagMaskShift)
             is_ctrl = bool(flags & Quartz.kCGEventFlagMaskControl)
 
-            if is_cmd and not is_alt and not is_shift and not is_ctrl:
+            # Only intercept Control + 1 / Control + 2 (never touch Command to avoid browser tab conflicts)
+            if is_ctrl and not is_cmd and not is_alt and not is_shift:
                 keycode = Quartz.CGEventGetIntegerValueField(
                     event, Quartz.kCGKeyboardEventKeycode
                 )
@@ -499,9 +502,8 @@ class GlobalHotkeyManager:
 
         digit = self._detect_digit_1_or_2(key)
         if digit is not None:
-            # On macOS, Command + 1 / Command + 2 is used instead of Ctrl + 1 / Ctrl + 2
-            mod_pressed = self._cmd_pressed if sys.platform == "darwin" else self._ctrl_pressed
-            if mod_pressed and not self._alt_pressed and not self._shift_pressed:
+            # Globally across macOS, Windows, Linux: Ctrl + 1 / Ctrl + 2
+            if self._ctrl_pressed and not self._cmd_pressed and not self._alt_pressed and not self._shift_pressed:
                 if digit in self._active_digits:
                     return
                 self._active_digits.add(digit)

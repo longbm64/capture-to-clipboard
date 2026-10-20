@@ -98,6 +98,81 @@ if [[ -d "$APP_BUNDLE" ]]; then
     cp -R "$APP_BUNDLE" dist/dmg_staging/
     ln -s /Applications dist/dmg_staging/Applications
 
+    # 1. Trình cài đặt 1-click "Cài Đặt & Mở Ứng Dụng.app" trong DMG
+    INSTALLER_APP="dist/dmg_staging/Cài Đặt & Mở Ứng Dụng.app"
+    echo "-> Đang tạo trình hỗ trợ cài đặt 1-click ($INSTALLER_APP)..."
+    cat << 'EOF' > dist/installer_script.applescript
+on run
+    set myPath to POSIX path of (path to me)
+    set dmgFolder to do shell script "p=" & quoted form of myPath & "; p=${p%/}; dirname \"$p\""
+    set sourceApp to dmgFolder & "/Capture To Clipboard.app"
+    set destApp to "/Applications/Capture To Clipboard.app"
+    
+    set appExists to (do shell script "if [ -d " & quoted form of sourceApp & " ]; then echo 1; else echo 0; fi")
+    if appExists is "0" then
+        tell application "System Events"
+            activate
+            display alert "Không tìm thấy bộ cài" message "Không tìm thấy file 'Capture To Clipboard.app' trong cùng thư mục để cài đặt." as critical buttons {"Đóng"} default button "Đóng"
+        end tell
+        return
+    end if
+    
+    do shell script "pkill -f 'CaptureToClipboard' 2>/dev/null || true"
+    
+    try
+        do shell script "rm -rf " & quoted form of destApp & " && ditto " & quoted form of sourceApp & " " & quoted form of destApp
+        do shell script "xattr -dr com.apple.quarantine " & quoted form of destApp & " 2>/dev/null || true"
+    on error errMsg
+        tell application "System Events"
+            activate
+            display alert "Lỗi khi cài đặt" message ("Không thể sao chép ứng dụng vào /Applications: " & errMsg) as critical buttons {"Đóng"} default button "Đóng"
+        end tell
+        return
+    end try
+    
+    tell application "System Events"
+        activate
+        set userChoice to button returned of (display alert "Cài Đặt Thành Công!" message "🎉 Capture To Clipboard đã được cài đặt thành công vào thư mục Applications." & return & return & "Phím tắt sử dụng:" & return & "• Ctrl + 1 : Chụp nhanh vào bộ nhớ tạm (Clipboard)" & return & "• Ctrl + 2 : Chụp & Ghi chú trên ảnh" as informational buttons {"Đóng", "Mở ứng dụng"} default button "Mở ứng dụng")
+    end tell
+    
+    if userChoice is "Mở ứng dụng" then
+        do shell script "open -a " & quoted form of destApp
+        tell application "Finder"
+            try
+                set dmgDisk to disk of (path to me)
+                eject dmgDisk
+            end try
+        end tell
+    end if
+end run
+EOF
+    osacompile -o "$INSTALLER_APP" dist/installer_script.applescript
+    rm -f dist/installer_script.applescript
+    if [[ -f "assets/logo.icns" ]]; then
+        cp assets/logo.icns "$INSTALLER_APP/Contents/Resources/applet.icns" 2>/dev/null || true
+    fi
+    codesign --force --deep --sign - "$INSTALLER_APP" 2>/dev/null || true
+
+    # 2. File hướng dẫn cài đặt & phím tắt
+    cat << 'EOF' > dist/dmg_staging/HUONG_DAN_CAI_DAT.txt
+=============================================================
+  HƯỚNG DẪN CÀI ĐẶT CAPTURE TO CLIPBOARD CHO MACOS
+=============================================================
+
+CÁCH 1 (Khuyên dùng - Nhanh & Tự Động):
+- Nhấp đúp vào icon "Cài Đặt & Mở Ứng Dụng"
+- Khi hiện thông báo "Cài Đặt Thành Công!", bấm "Mở ứng dụng" để sử dụng ngay!
+
+CÁCH 2 (Kéo thả truyền thống):
+- Kéo icon "Capture To Clipboard" thả vào thư mục "Applications" bên cạnh.
+- Mở thư mục Applications và khởi chạy Capture To Clipboard.
+
+Phím tắt toàn cục:
+• Ctrl + 1 : Chụp nhanh màn hình và sao chép vào Clipboard
+• Ctrl + 2 : Chụp màn hình và mở bảng vẽ ghi chú
+=============================================================
+EOF
+
     hdiutil create \
         -volname "Capture To Clipboard" \
         -srcfolder dist/dmg_staging \

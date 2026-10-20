@@ -415,6 +415,81 @@ def _ensure_single_instance(minimized: bool) -> bool:
     return True
 
 
+def _check_and_prompt_move_to_applications() -> bool:
+    """If running directly from a mounted DMG volume on macOS, offer to install into /Applications."""
+    if sys.platform != "darwin" or not getattr(sys, "frozen", False):
+        return True
+
+    try:
+        import shutil
+        import subprocess
+
+        exe_path = Path(sys.executable).resolve()
+        app_bundle: Optional[Path] = None
+        for p in [exe_path] + list(exe_path.parents):
+            if p.name.endswith(".app"):
+                app_bundle = p
+                break
+
+        if not app_bundle or not str(app_bundle).startswith("/Volumes/"):
+            return True
+
+        dest_app = Path("/Applications") / app_bundle.name
+
+        # Ask user via a native AppleScript dialog
+        ascript = (
+            'tell application "System Events"\n'
+            '    activate\n'
+            '    set theResp to button returned of (display alert "Cài đặt Capture To Clipboard" '
+            'message "Ứng dụng đang chạy từ bộ cài đặt DMG.\\n\\n'
+            'Bạn có muốn tự động cài đặt vào thư mục Applications để sử dụng thuận tiện và lâu dài không?" '
+            'as informational buttons {"Chỉ chạy thử", "Cài đặt & Mở ngay"} default button "Cài đặt & Mở ngay")\n'
+            '    return theResp\n'
+            'end tell'
+        )
+        res = subprocess.run(
+            ["osascript", "-e", ascript], capture_output=True, text=True, check=False
+        )
+        if "Cài đặt & Mở ngay" not in res.stdout:
+            return True
+
+        # Copy to /Applications
+        subprocess.run(["pkill", "-f", "CaptureToClipboard"], check=False)
+        if dest_app.exists():
+            shutil.rmtree(dest_app, ignore_errors=True)
+
+        subprocess.run(["ditto", str(app_bundle), str(dest_app)], check=True)
+        subprocess.run(["xattr", "-dr", "com.apple.quarantine", str(dest_app)], check=False)
+
+        # Show success alert with Open App button
+        success_ascript = (
+            'tell application "System Events"\n'
+            '    activate\n'
+            '    set theResp to button returned of (display alert "Cài Đặt Thành Công!" '
+            'message "🎉 Capture To Clipboard đã được cài đặt thành công vào thư mục Applications!\\n\\n'
+            'Phím tắt sử dụng:\\n'
+            '• Ctrl + 1 : Chụp nhanh vào bộ nhớ tạm (Clipboard)\\n'
+            '• Ctrl + 2 : Chụp & Ghi chú trên ảnh" '
+            'as informational buttons {"Đóng", "Mở ứng dụng"} default button "Mở ứng dụng")\n'
+            '    return theResp\n'
+            'end tell'
+        )
+        s_res = subprocess.run(
+            ["osascript", "-e", success_ascript], capture_output=True, text=True, check=False
+        )
+        if "Mở ứng dụng" in s_res.stdout:
+            subprocess.Popen(["open", "-a", str(dest_app)])
+            try:
+                dmg_mount = app_bundle.parent
+                if str(dmg_mount).startswith("/Volumes/"):
+                    subprocess.run(["diskutil", "unmount", str(dmg_mount)], check=False)
+            except Exception:
+                pass
+        return False
+    except Exception:
+        return True
+
+
 def main() -> int:
     if sys.stdout is None:
         sys.stdout = open(os.devnull, "w", encoding="utf-8")
@@ -453,6 +528,10 @@ def main() -> int:
 
     if args.self_test:
         return run_self_test()
+
+    if sys.platform == "darwin":
+        if not _check_and_prompt_move_to_applications():
+            return 0
 
     if not _ensure_single_instance(minimized=args.minimized):
         return 0

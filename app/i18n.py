@@ -20,6 +20,8 @@ from app import APP_VERSION
 APP_NAME = "Capture To Clipboard"
 APP_NAME_WITH_VERSION = f"{APP_NAME} v{APP_VERSION}"
 MOD_KEY = "Cmd" if sys.platform == "darwin" else "Ctrl"
+CAPTURE_HOTKEY_FAST = "Ctrl + 1"
+CAPTURE_HOTKEY_DRAW = "Ctrl + 2"
 
 _CURRENT_LANG: Optional[str] = None
 
@@ -88,14 +90,12 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
         "tray_tooltip": f"Capture To Clipboard v{APP_VERSION} — Nhấn để mở Cài đặt & Hướng dẫn",
         "tray_open_settings": "Bảng hướng dẫn & Cài đặt",
         "tray_autostart": "Khởi động cùng máy tính",
-        "tray_capture_fast": f"Chụp nhanh ({MOD_KEY} + 1)",
-        "tray_capture_draw": f"Chụp & Ghi chú ({MOD_KEY} + 2)",
+        "tray_capture_fast": f"Chụp nhanh ({CAPTURE_HOTKEY_FAST})",
+        "tray_capture_draw": f"Chụp & Ghi chú ({CAPTURE_HOTKEY_DRAW})",
         "tray_exit": "Đóng ứng dụng",
         # Toasts
         "toast_ready": (
-            f"Capture To Clipboard đã sẵn sàng  •  {MOD_KEY}+1: Chụp nhanh  |  {MOD_KEY}+2: Chụp & Ghi chú"
-            if sys.platform == "darwin"
-            else "Capture To Clipboard đã sẵn sàng  •  Ctrl+1 / PrtSc: Chụp nhanh  |  Ctrl+2: Chụp & Ghi chú"
+            f"Capture To Clipboard đã sẵn sàng  •  {CAPTURE_HOTKEY_FAST} / PrtSc: Chụp nhanh  |  {CAPTURE_HOTKEY_DRAW}: Chụp & Ghi chú"
         ),
         "toast_minimized_tray": "Capture To Clipboard đã thu xuống khay hệ thống (System Tray).",
         "toast_autostart_on": "Đã bật khởi động cùng máy tính.",
@@ -107,11 +107,7 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
         "toast_copied_draw": "Đã sao chép ảnh ghi chú ({w}×{h} px) vào bộ nhớ tạm!",
         # Settings Window
         "settings_autostart_title": "Khởi động cùng máy tính",
-        "settings_prtsc_title": (
-            "Bấm phím PrtSc để chụp nhanh (tương tự Cmd + 1)"
-            if sys.platform == "darwin"
-            else "Bấm phím PrtSc để chụp nhanh (tương tự Ctrl + 1)"
-        ),
+        "settings_prtsc_title": "Bấm phím PrtSc để chụp nhanh (tương tự Ctrl + 1)",
         "settings_lang_title": "Ngôn ngữ hiển thị (Language)",
         "status_enabled": "✓ Đang bật",
         "status_disabled": "Đang tắt",
@@ -124,8 +120,8 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
         "table_col_function": "CHỨC NĂNG",
         "table_col_desc": "MÔ TẢ THAO TÁC",
         # Overlay
-        "overlay_ctrl1_title": f"⚡ {MOD_KEY} + 1 : Kéo chọn vùng để sao chép ảnh ngay",
-        "overlay_ctrl2_title": f"🎨 {MOD_KEY} + 2 : Kéo chọn vùng để thêm ghi chú",
+        "overlay_ctrl1_title": f"⚡ {CAPTURE_HOTKEY_FAST} : Kéo chọn vùng để sao chép ảnh ngay",
+        "overlay_ctrl2_title": f"🎨 {CAPTURE_HOTKEY_DRAW} : Kéo chọn vùng để thêm ghi chú",
         "overlay_banner_hint": "Kéo chọn vùng   •   Nhấp đúp hoặc Space: Chụp toàn màn hình   •   ESC để hủy",
         # Editor
         "editor_undo": "Hoàn tác",
@@ -150,14 +146,12 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
         "tray_tooltip": f"Capture To Clipboard v{APP_VERSION} — Click to open Settings & Guide",
         "tray_open_settings": "Settings & Shortcut Guide",
         "tray_autostart": "Launch at system startup",
-        "tray_capture_fast": f"Quick Capture ({MOD_KEY} + 1)",
-        "tray_capture_draw": f"Capture & Annotate ({MOD_KEY} + 2)",
+        "tray_capture_fast": f"Quick Capture ({CAPTURE_HOTKEY_FAST})",
+        "tray_capture_draw": f"Capture & Annotate ({CAPTURE_HOTKEY_DRAW})",
         "tray_exit": "Quit Application",
         # Toasts
         "toast_ready": (
-            f"Capture To Clipboard is ready  •  {MOD_KEY}+1: Quick Capture  |  {MOD_KEY}+2: Capture & Annotate"
-            if sys.platform == "darwin"
-            else "Capture To Clipboard is ready  •  Ctrl+1 / PrtSc: Quick Capture  |  Ctrl+2: Capture & Annotate"
+            f"Capture To Clipboard is ready  •  {CAPTURE_HOTKEY_FAST} / PrtSc: Quick Capture  |  {CAPTURE_HOTKEY_DRAW}: Capture & Annotate"
         ),
         "toast_minimized_tray": "Capture To Clipboard minimized to the System Tray.",
         "toast_autostart_on": "Enabled launch at system startup.",
@@ -169,11 +163,7 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
         "toast_copied_draw": "Copied annotated image ({w}×{h} px) to Clipboard!",
         # Settings Window
         "settings_autostart_title": "Launch at system startup",
-        "settings_prtsc_title": (
-            "Press PrtSc for instant capture (same as Cmd + 1)"
-            if sys.platform == "darwin"
-            else "Press PrtSc for instant capture (same as Ctrl + 1)"
-        ),
+        "settings_prtsc_title": "Press PrtSc for instant capture (same as Ctrl + 1)",
         "settings_lang_title": "Display Language (Ngôn ngữ)",
         "status_enabled": "✓ Enabled",
         "status_disabled": "Disabled",
@@ -186,8 +176,8 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
         "table_col_function": "FUNCTION",
         "table_col_desc": "ACTION DESCRIPTION",
         # Overlay
-        "overlay_ctrl1_title": f"⚡ {MOD_KEY} + 1 : Drag to select region & copy immediately",
-        "overlay_ctrl2_title": f"🎨 {MOD_KEY} + 2 : Drag to select region & annotate",
+        "overlay_ctrl1_title": f"⚡ {CAPTURE_HOTKEY_FAST} : Drag to select region & copy immediately",
+        "overlay_ctrl2_title": f"🎨 {CAPTURE_HOTKEY_DRAW} : Drag to select region & annotate",
         "overlay_banner_hint": "Drag to select region   •   Double-click or Space: Full Screen   •   ESC to cancel",
         # Editor
         "editor_undo": "Undo",
@@ -212,14 +202,14 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
 SHORTCUTS_GUIDE_I18N: Dict[str, List[Tuple[str, str, str, str, str]]] = {
     "vi": [
         (
-            f"{MOD_KEY} + 1" if sys.platform == "darwin" else "Ctrl + 1 / PrtSc",
+            f"{CAPTURE_HOTKEY_FAST} / PrtSc",
             "#0284c7",
             "#e0f2fe",
             "Chụp & Sao chép ngay",
             f"Kéo chọn vùng màn hình để lưu ngay ảnh nét cao vào bộ nhớ tạm (nhấn {MOD_KEY} + V để dán).",
         ),
         (
-            f"{MOD_KEY} + 2",
+            CAPTURE_HOTKEY_DRAW,
             "#7c3aed",
             "#f3e8ff",
             "Chụp & Ghi chú trên ảnh",
@@ -270,14 +260,14 @@ SHORTCUTS_GUIDE_I18N: Dict[str, List[Tuple[str, str, str, str, str]]] = {
     ],
     "en": [
         (
-            f"{MOD_KEY} + 1" if sys.platform == "darwin" else "Ctrl + 1 / PrtSc",
+            f"{CAPTURE_HOTKEY_FAST} / PrtSc",
             "#0284c7",
             "#e0f2fe",
             "Instant Capture & Copy",
             f"Drag to select a screen region and immediately copy HD image to Clipboard ({MOD_KEY} + V to paste).",
         ),
         (
-            f"{MOD_KEY} + 2",
+            CAPTURE_HOTKEY_DRAW,
             "#7c3aed",
             "#f3e8ff",
             "Capture & Annotate",

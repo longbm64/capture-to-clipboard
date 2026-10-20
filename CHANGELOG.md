@@ -4,6 +4,17 @@ Toàn bộ các phiên bản phát hành của **Capture To Clipboard** được
 
 ---
 
+## [v1.3.6] - 2026-10-20
+
+### 🛡️ Khắc phục xung đột phím tắt trình duyệt trên macOS
+- **Chuyển phím tắt chụp màn hình trên macOS sang `Ctrl + 1` và `Ctrl + 2`:**
+  - Giải phóng hoàn toàn tổ hợp `Cmd + 1` và `Cmd + 2` trên macOS, chấm dứt triệt để tình trạng chặn thao tác chuyển tab số 1 và số 2 trong các trình duyệt (Chrome, Safari, Brave, Arc, Edge...).
+  - Đồng nhất 100% phím tắt chụp ảnh trên toàn bộ hệ điều hành (macOS, Windows, Linux) với `Ctrl + 1` (Chụp nhanh) và `Ctrl + 2` (Chụp & Ghi chú).
+  - Tối ưu bộ bắt sự kiện cấp thấp Quartz Event Intercept: chỉ can thiệp phím Control (`^`), hoàn trả toàn bộ sự kiện Command (`⌘`) cho hệ thống và ứng dụng tiền cảnh với độ trễ 0ms.
+  - Đồng bộ cập nhật bảng tra cứu phím tắt trong giao diện Cài đặt, thông báo Toast, Menu khay hệ thống (Menu Bar / Tray) và tài liệu hướng dẫn.
+
+---
+
 ## [v1.3.5] - 2026-10-20
 
 ### ⌨️ Tối ưu phím tắt Sao chép trong Trình chỉnh sửa ảnh (Annotation Editor)
