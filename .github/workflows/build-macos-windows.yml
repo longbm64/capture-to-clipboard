@@ -1,4 +1,4 @@
-name: Build macOS (.dmg / .app) & Windows (.exe)
+name: Build Windows C++ (.exe) & macOS (.dmg / .app)
 
 on:
   push:
@@ -6,6 +6,27 @@ on:
   workflow_dispatch:
 
 jobs:
+  build-windows:
+    name: Build Windows Native C++ (CaptureToClipboard.exe)
+    runs-on: windows-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Build Native C++ EXE
+        run: |
+          cmd /c build_windows.bat
+
+      - name: Run Self-Test
+        run: |
+          .\dist\CaptureToClipboard.exe --self-test | Out-Host
+
+      - name: Upload Windows EXE Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: CaptureToClipboard-Windows-Portable
+          path: dist/CaptureToClipboard.exe
+
   build-macos:
     name: Build macOS (Capture To Clipboard.app & .dmg)
     runs-on: macos-latest
@@ -19,6 +40,7 @@ jobs:
           python-version: '3.12'
 
       - name: Build Capture To Clipboard.app & .dmg
+        working-directory: old-code
         run: |
           chmod +x build_macos.sh
           ./build_macos.sh
@@ -28,30 +50,5 @@ jobs:
         with:
           name: CaptureToClipboard-macOS-Installer
           path: |
-            dist/CaptureToClipboard-macOS.dmg
-            dist/CaptureToClipboard-macOS-App.zip
-
-  build-windows:
-    name: Build Windows (CaptureToClipboard.exe)
-    runs-on: windows-latest
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Set up Python 3.12
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-
-      - name: Install dependencies & Build EXE
-        run: |
-          python -m pip install --upgrade pip
-          python -m pip install -r requirements.txt pyinstaller
-          python -c "from app.tray import ensure_logo_assets; ensure_logo_assets()"
-          python -m PyInstaller --noconfirm --clean --noconsole --onefile --name "CaptureToClipboard" --icon "assets/logo.ico" --add-data "assets;assets" --hidden-import "pystray._win32" --hidden-import "pynput.keyboard._win32" --hidden-import "pynput.mouse._win32" main.py
-
-      - name: Upload Windows EXE Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: CaptureToClipboard-Windows-Portable
-          path: dist/CaptureToClipboard.exe
+            old-code/dist/CaptureToClipboard-macOS.dmg
+            old-code/dist/CaptureToClipboard-macOS-App.zip

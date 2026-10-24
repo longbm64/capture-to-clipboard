@@ -1,7 +1,10 @@
 @echo off
+chcp 65001 >nul
 cd /d "%~dp0"
-powershell -NoProfile -Command "Get-CimInstance Win32_Process -Filter \"Name LIKE 'python%' AND CommandLine LIKE '%main.py%'\" | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }"
-start "" pythonw main.py
-if errorlevel 1 (
-    python main.py
+
+if not exist "dist\CaptureToClipboard.exe" (
+    call build_windows.bat
+    if errorlevel 1 exit /b 1
 )
+
+start "" "dist\CaptureToClipboard.exe" --show-settings
