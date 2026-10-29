@@ -81,3 +81,22 @@ cmake --build build --config Release
 ```powershell
 .\dist\CaptureToClipboard.exe --self-test
 ```
+
+### D. Ký số Authenticode & Cài đặt chứng chỉ tin cậy (`Root Trust`)
+Ứng dụng được tích hợp sẵn cơ chế tự động ký số Authenticode kèm dấu thời gian RFC 3161 (DigiCert Timestamp) và làm sạch bộ nhớ đệm Smart App Control:
+- **Tự động ký khi build**: Cả `build_windows.bat` và `CMake` đều tự động kích hoạt script `sign_and_trust.ps1` sau khi biên dịch xong.
+- **Cài đặt chứng chỉ vào hệ thống để đạt trạng thái `Valid`**:
+  Nhấp đúp hoặc chuột phải chọn **Run as administrator** file:
+  ```powershell
+  .\trust_cert_admin.bat
+  ```
+  hoặc chạy trong PowerShell (Run as Administrator):
+  ```powershell
+  powershell -ExecutionPolicy Bypass -File .\sign_and_trust.ps1
+  ```
+- **Kiểm tra trạng thái chữ ký số**:
+  ```powershell
+  Get-AuthenticodeSignature .\dist\CaptureToClipboard.exe
+  ```
+  Kết quả hiển thị `Status: Valid` (Chữ ký hợp lệ, chứng chỉ số được hệ thống Windows và Smart App Control tin cậy hoàn toàn).
+

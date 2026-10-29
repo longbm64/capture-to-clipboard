@@ -71,5 +71,9 @@ if errorlevel 1 (
 )
 
 echo.
-echo [OK] Build thanh cong: "%~dp0dist\CaptureToClipboard.exe"
+echo [3/3] Dang ky so ung dung (Authenticode Code Signing)...
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0sign_and_trust.ps1"
+
+echo.
+echo [OK] Build va ky so thanh cong: "%~dp0dist\CaptureToClipboard.exe"
 exit /b 0

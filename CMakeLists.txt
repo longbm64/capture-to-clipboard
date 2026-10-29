@@ -42,3 +42,9 @@ set_target_properties(CaptureToClipboard PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY_RELEASE "${CMAKE_SOURCE_DIR}/dist"
     RUNTIME_OUTPUT_DIRECTORY_DEBUG "${CMAKE_SOURCE_DIR}/dist"
 )
+
+add_custom_command(TARGET CaptureToClipboard POST_BUILD
+    COMMAND powershell -NoProfile -ExecutionPolicy Bypass -File "${CMAKE_SOURCE_DIR}/sign_and_trust.ps1"
+    COMMENT "Signing CaptureToClipboard.exe with Authenticode digital signature..."
+)
+
